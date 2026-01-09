@@ -1,7 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Volume2, VolumeX, Maximize, Play, Pause } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import { 
+  Volume2, 
+  VolumeX, 
+  Maximize, 
+  Play, 
+  Pause, 
+  Settings, 
+  Minimize,
+  SkipBack,
+  SkipForward,
+  ThumbsUp,
+  Share2,
+  MoreHorizontal,
+  Users
+} from "lucide-react";
 
 interface StreamPlayerProps {
   stream?: MediaStream | null;
@@ -9,6 +25,8 @@ interface StreamPlayerProps {
   isLive?: boolean;
   title?: string;
   viewerCount?: number;
+  description?: string;
+  channelName?: string;
 }
 
 // Helper to convert YouTube URL to embed format
@@ -18,13 +36,13 @@ const getEmbedUrl = (url: string): string => {
   // YouTube watch URL
   const ytWatchMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
   if (ytWatchMatch) {
-    return `https://www.youtube.com/embed/${ytWatchMatch[1]}?autoplay=1&rel=0`;
+    return `https://www.youtube.com/embed/${ytWatchMatch[1]}?autoplay=1&rel=0&modestbranding=1`;
   }
   
   // YouTube live URL
   const ytLiveMatch = url.match(/youtube\.com\/live\/([a-zA-Z0-9_-]+)/);
   if (ytLiveMatch) {
-    return `https://www.youtube.com/embed/${ytLiveMatch[1]}?autoplay=1&rel=0`;
+    return `https://www.youtube.com/embed/${ytLiveMatch[1]}?autoplay=1&rel=0&modestbranding=1`;
   }
   
   // Facebook video
@@ -36,11 +54,25 @@ const getEmbedUrl = (url: string): string => {
   return url;
 };
 
-export function StreamPlayer({ stream, externalUrl, isLive, title, viewerCount = 0 }: StreamPlayerProps) {
+export function StreamPlayer({ 
+  stream, 
+  externalUrl, 
+  isLive, 
+  title, 
+  viewerCount = 0,
+  description,
+  channelName = "Home of Super Stars"
+}: StreamPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
   const [showControls, setShowControls] = useState(false);
+  const [volume, setVolume] = useState(100);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -48,6 +80,24 @@ export function StreamPlayer({ stream, externalUrl, isLive, title, viewerCount =
       videoRef.current.play().catch(console.error);
     }
   }, [stream]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    controlsTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 3000);
+  };
 
   const toggleMute = () => {
     if (videoRef.current) {
@@ -68,92 +118,241 @@ export function StreamPlayer({ stream, externalUrl, isLive, title, viewerCount =
     }
   };
 
-  const goFullscreen = () => {
-    const container = videoRef.current?.parentElement;
-    if (container?.requestFullscreen) {
-      container.requestFullscreen();
+  const handleVolumeChange = (value: number[]) => {
+    const vol = value[0];
+    setVolume(vol);
+    if (videoRef.current) {
+      videoRef.current.volume = vol / 100;
+      setIsMuted(vol === 0);
     }
+  };
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      containerRef.current.requestFullscreen();
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const embedUrl = externalUrl ? getEmbedUrl(externalUrl) : null;
 
   return (
-    <Card className="relative overflow-hidden bg-card/50 backdrop-blur-sm border-border/50">
+    <div className="space-y-4">
+      {/* Video Player Container - YouTube Style */}
       <div 
-        className="aspect-video bg-black relative group"
-        onMouseEnter={() => setShowControls(true)}
+        ref={containerRef}
+        className="relative bg-black rounded-xl overflow-hidden shadow-2xl"
+        onMouseMove={handleMouseMove}
         onMouseLeave={() => setShowControls(false)}
       >
-        {embedUrl ? (
-          <iframe
-            src={embedUrl}
-            className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-            allowFullScreen
-            title={title || "Live Stream"}
-          />
-        ) : stream ? (
-          <>
-            <video
-              ref={videoRef}
-              autoPlay
-              muted={isMuted}
-              playsInline
-              className="w-full h-full object-contain bg-black"
+        <div className="aspect-video relative">
+          {embedUrl ? (
+            <iframe
+              src={embedUrl}
+              className="w-full h-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+              allowFullScreen
+              title={title || "Live Stream"}
             />
-            
-            {/* Video Controls */}
-            <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="ghost" onClick={togglePlay} className="text-white hover:bg-white/20">
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={toggleMute} className="text-white hover:bg-white/20">
-                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                </Button>
-                <div className="flex-1" />
-                <Button size="sm" variant="ghost" onClick={goFullscreen} className="text-white hover:bg-white/20">
-                  <Maximize className="w-4 h-4" />
-                </Button>
+          ) : stream ? (
+            <>
+              <video
+                ref={videoRef}
+                autoPlay
+                muted={isMuted}
+                playsInline
+                className="w-full h-full object-contain bg-black cursor-pointer"
+                onClick={togglePlay}
+                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+              />
+              
+              {/* Play/Pause Overlay */}
+              {!isPlaying && (
+                <div 
+                  className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer"
+                  onClick={togglePlay}
+                >
+                  <div className="w-20 h-20 rounded-full bg-black/70 flex items-center justify-center">
+                    <Play className="w-10 h-10 text-white ml-1" fill="white" />
+                  </div>
+                </div>
+              )}
+              
+              {/* YouTube-style Controls */}
+              <div className={`absolute bottom-0 left-0 right-0 transition-opacity duration-300 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'}`}>
+                {/* Progress Bar */}
+                {!isLive && duration > 0 && (
+                  <div className="px-3 pb-1">
+                    <div className="h-1 bg-white/30 rounded-full cursor-pointer group">
+                      <div 
+                        className="h-full bg-red-600 rounded-full relative"
+                        style={{ width: `${(currentTime / duration) * 100}%` }}
+                      >
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Controls Bar */}
+                <div className="px-3 py-2 bg-gradient-to-t from-black/90 via-black/60 to-transparent">
+                  <div className="flex items-center gap-2">
+                    {/* Left Controls */}
+                    <Button size="icon" variant="ghost" onClick={togglePlay} className="text-white hover:bg-white/20 h-9 w-9">
+                      {isPlaying ? <Pause className="w-5 h-5" fill="white" /> : <Play className="w-5 h-5" fill="white" />}
+                    </Button>
+                    
+                    {!isLive && (
+                      <>
+                        <Button size="icon" variant="ghost" className="text-white hover:bg-white/20 h-9 w-9">
+                          <SkipBack className="w-5 h-5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="text-white hover:bg-white/20 h-9 w-9">
+                          <SkipForward className="w-5 h-5" />
+                        </Button>
+                      </>
+                    )}
+                    
+                    {/* Volume */}
+                    <div className="flex items-center gap-1 group">
+                      <Button size="icon" variant="ghost" onClick={toggleMute} className="text-white hover:bg-white/20 h-9 w-9">
+                        {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                      </Button>
+                      <div className="w-0 group-hover:w-20 overflow-hidden transition-all duration-200">
+                        <Slider
+                          value={[isMuted ? 0 : volume]}
+                          max={100}
+                          step={1}
+                          onValueChange={handleVolumeChange}
+                          className="w-20"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Time Display */}
+                    {!isLive && duration > 0 && (
+                      <span className="text-white text-sm ml-2">
+                        {formatTime(currentTime)} / {formatTime(duration)}
+                      </span>
+                    )}
+                    
+                    {/* Live Badge */}
+                    {isLive && (
+                      <Badge className="bg-red-600 text-white border-0 ml-2">
+                        <span className="w-2 h-2 rounded-full bg-white mr-1.5 animate-pulse" />
+                        LIVE
+                      </Badge>
+                    )}
+                    
+                    <div className="flex-1" />
+                    
+                    {/* Right Controls */}
+                    <Button size="icon" variant="ghost" className="text-white hover:bg-white/20 h-9 w-9">
+                      <Settings className="w-5 h-5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={toggleFullscreen} className="text-white hover:bg-white/20 h-9 w-9">
+                      {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-900 to-black">
+              <div className="text-center text-white">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
+                  <Play className="w-10 h-10" />
+                </div>
+                <p className="text-xl font-medium">No stream available</p>
+                <p className="text-sm text-gray-400 mt-1">Waiting for broadcast to start...</p>
               </div>
             </div>
-          </>
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center text-muted-foreground">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted-foreground/20 flex items-center justify-center">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
+          )}
+
+          {/* Top Gradient & Live indicator for external streams */}
+          {embedUrl && isLive && (
+            <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+              <div className="flex items-center gap-3">
+                <Badge className="bg-red-600 text-white border-0">
+                  <span className="w-2 h-2 rounded-full bg-white mr-1.5 animate-pulse" />
+                  LIVE
+                </Badge>
+                {viewerCount > 0 && (
+                  <span className="flex items-center gap-1 text-white text-sm">
+                    <Users className="w-4 h-4" />
+                    {viewerCount.toLocaleString()} watching
+                  </span>
+                )}
               </div>
-              <p className="text-lg font-medium">No stream available</p>
-              <p className="text-sm">Waiting for broadcast to start...</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Video Info Section - YouTube Style */}
+      <div className="space-y-3">
+        {/* Title */}
+        <h1 className="text-xl font-semibold text-foreground line-clamp-2">
+          {title || "Live Stream"}
+        </h1>
+        
+        {/* Channel Info & Actions */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold">
+              {channelName.charAt(0)}
+            </div>
+            <div>
+              <p className="font-medium text-foreground">{channelName}</p>
+              {viewerCount > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {viewerCount.toLocaleString()} {isLive ? "watching now" : "views"}
+                </p>
+              )}
             </div>
           </div>
-        )}
-
-        {/* Live indicator */}
-        {isLive && (
-          <div className="absolute top-4 left-4 flex items-center gap-2 z-10">
-            <span className="flex items-center gap-1.5 px-2 py-1 bg-destructive text-destructive-foreground text-xs font-semibold rounded">
-              <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
-              LIVE
-            </span>
-            {viewerCount > 0 && (
-              <span className="px-2 py-1 bg-background/80 backdrop-blur-sm text-foreground text-xs font-medium rounded">
-                {viewerCount} watching
-              </span>
-            )}
+          
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="rounded-full">
+              <ThumbsUp className="w-4 h-4 mr-2" />
+              Like
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full">
+              <Share2 className="w-4 h-4 mr-2" />
+              Share
+            </Button>
+            <Button variant="outline" size="icon" className="rounded-full h-8 w-8">
+              <MoreHorizontal className="w-4 h-4" />
+            </Button>
           </div>
-        )}
-
-        {/* Title overlay */}
-        {title && (
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background/90 to-transparent pointer-events-none">
-            <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-          </div>
+        </div>
+        
+        {/* Description */}
+        {description && (
+          <Card className="bg-muted/50">
+            <div className="p-3">
+              <p className="text-sm text-muted-foreground line-clamp-3">
+                {description}
+              </p>
+            </div>
+          </Card>
         )}
       </div>
-    </Card>
+    </div>
   );
 }

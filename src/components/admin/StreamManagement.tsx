@@ -800,7 +800,6 @@ export function StreamManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
 
       {/* Go Live Dialog */}
       <Dialog open={showGoLiveDialog} onOpenChange={(open) => {

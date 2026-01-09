@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Heart, Users, Mic, MicOff, Video, VideoOff, Calendar, Clock } from "lucide-react";
+import { Heart, Users, Mic, MicOff, Video, VideoOff, Calendar, Clock, LogIn, Lock } from "lucide-react";
 import { usePrayerSessions } from "@/hooks/usePrayerSession";
 import { PrayerRoom } from "@/components/prayer/PrayerRoom";
 import { SessionCard } from "@/components/prayer/SessionCard";
@@ -20,6 +20,7 @@ const Prayer = () => {
   const { user } = useAuth();
   const { liveSessions, scheduledSessions, loading } = usePrayerSessions();
   const [showJoinDialog, setShowJoinDialog] = useState(false);
+  const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [selectedSession, setSelectedSession] = useState<PrayerSession | null>(null);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [videoEnabled, setVideoEnabled] = useState(false);
@@ -48,7 +49,8 @@ const Prayer = () => {
 
   const handleJoinSession = (session: PrayerSession) => {
     if (!user) {
-      navigate("/auth");
+      setSelectedSession(session);
+      setShowSignInPrompt(true);
       return;
     }
     setSelectedSession(session);
@@ -108,6 +110,25 @@ const Prayer = () => {
       {/* Live Sessions */}
       <section className="py-12 md:py-16">
         <div className="container">
+          {/* Sign in prompt for guests */}
+          {!user && (
+            <Card className="mb-8 border-accent/30 bg-accent/5">
+              <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Lock className="w-5 h-5 text-accent" />
+                  <div>
+                    <p className="font-medium">Sign in to join prayer sessions</p>
+                    <p className="text-sm text-muted-foreground">Connect with other believers and participate in live prayer</p>
+                  </div>
+                </div>
+                <Button onClick={() => navigate("/auth")} className="bg-accent text-accent-foreground hover:bg-accent/90">
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign In
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex items-center gap-2 mb-6">
             <span className="w-3 h-3 rounded-full bg-destructive animate-pulse" />
             <h2 className="text-2xl font-serif font-semibold">Live Sessions Now</h2>
@@ -209,6 +230,57 @@ const Prayer = () => {
               </Button>
               <Button variant="outline" className="w-full" onClick={() => setShowJoinDialog(false)}>
                 Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign In Prompt Dialog for Guests */}
+      <Dialog open={showSignInPrompt} onOpenChange={setShowSignInPrompt}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-serif flex items-center gap-2">
+              <Lock className="w-5 h-5 text-accent" />
+              Sign In Required
+            </DialogTitle>
+            <DialogDescription>
+              You need to sign in to join prayer sessions and connect with other believers.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {selectedSession && (
+              <Card className="bg-muted/50">
+                <CardContent className="p-4">
+                  <h4 className="font-semibold mb-1">{selectedSession.title}</h4>
+                  {selectedSession.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">{selectedSession.description}</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="text-center text-sm text-muted-foreground">
+              <p>Join our community to:</p>
+              <ul className="mt-2 space-y-1">
+                <li>✓ Participate in live prayer sessions</li>
+                <li>✓ Connect with other believers</li>
+                <li>✓ Submit prayer requests</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <Button 
+                className="w-full bg-accent text-accent-foreground hover:bg-accent/90" 
+                size="lg" 
+                onClick={() => navigate("/auth")}
+              >
+                <LogIn className="w-5 h-5 mr-2" />
+                Sign In to Join
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => setShowSignInPrompt(false)}>
+                Maybe Later
               </Button>
             </div>
           </div>

@@ -1,15 +1,24 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Radio, Play, Calendar, Clock, Eye } from "lucide-react";
+import { Radio, Play, Calendar, Clock, Eye, LogIn, Users } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { StreamPlayer } from "@/components/live/StreamPlayer";
-import { ActiveStreams } from "@/components/live/ActiveStreams";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+
+interface LiveStream {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  started_at: string | null;
+  external_stream_url: string | null;
+}
 
 interface ScheduledStream {
   id: string;
@@ -24,14 +33,16 @@ interface PastStream {
   ended_at: string | null;
   started_at: string | null;
   recording_url: string | null;
+  description: string | null;
   view_count?: number;
 }
 
 const Live = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [selectedStreamId, setSelectedStreamId] = useState<string | null>(null);
-  const [selectedStream, setSelectedStream] = useState<{ id: string; title: string; external_stream_url: string | null } | null>(null);
+  const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
+  const [selectedStream, setSelectedStream] = useState<LiveStream | null>(null);
   const [upcomingStreams, setUpcomingStreams] = useState<ScheduledStream[]>([]);
   const [pastStreams, setPastStreams] = useState<PastStream[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +66,12 @@ const Live = () => {
   }, []);
 
   const fetchStreams = async () => {
-    const [scheduledRes, pastRes] = await Promise.all([
+    const [liveRes, scheduledRes, pastRes] = await Promise.all([
+      supabase
+        .from("live_streams")
+        .select("id, title, description, status, started_at, external_stream_url")
+        .eq("status", "live")
+        .order("started_at", { ascending: false }),
       supabase
         .from("live_streams")
         .select("id, title, scheduled_at, description")
@@ -63,12 +79,20 @@ const Live = () => {
         .order("scheduled_at", { ascending: true }),
       supabase
         .from("live_streams")
-        .select("id, title, ended_at, started_at, recording_url")
+        .select("id, title, ended_at, started_at, recording_url, description")
         .eq("status", "ended")
+        .eq("recording_status", "saved")
         .order("ended_at", { ascending: false })
-        .limit(6),
+        .limit(8),
     ]);
 
+    if (liveRes.data) {
+      setLiveStreams(liveRes.data);
+      // Auto-select first live stream
+      if (liveRes.data.length > 0 && !selectedStream) {
+        setSelectedStream(liveRes.data[0]);
+      }
+    }
     if (scheduledRes.data) setUpcomingStreams(scheduledRes.data);
     if (pastRes.data) setPastStreams(pastRes.data);
     setLoading(false);
@@ -82,88 +106,149 @@ const Live = () => {
     return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
   };
 
-  const handleJoinStream = async (streamId: string) => {
-    setSelectedStreamId(streamId);
-    // Fetch stream data to get external URL
-    const { data } = await supabase
-      .from("live_streams")
-      .select("id, title, external_stream_url")
-      .eq("id", streamId)
-      .single();
-    
-    if (data) {
-      setSelectedStream(data);
+  const handleWatchStream = (stream: LiveStream) => {
+    setSelectedStream(stream);
+    // Scroll to player
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleWatchRecording = (recording: PastStream) => {
+    if (recording.recording_url) {
+      // Open recording in player
+      setSelectedStream({
+        id: recording.id,
+        title: recording.title,
+        description: recording.description,
+        status: "ended",
+        started_at: recording.started_at,
+        external_stream_url: recording.recording_url,
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   return (
     <Layout>
-      {/* Hero Section */}
-      <section className="relative py-12 md:py-20 gradient-hero overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-10 left-10 w-72 h-72 rounded-full bg-accent blur-3xl animate-float" />
-        </div>
-        <div className="container relative z-10 text-center">
-          <Badge variant="outline" className="border-primary-foreground/30 text-primary-foreground mb-4">
-            <Radio className="w-3 h-3 mr-1" />
-            Live Streaming
-          </Badge>
-          <h1 className="text-4xl md:text-5xl font-serif font-bold text-primary-foreground mb-4">
-            Watch Live Services
-          </h1>
-          <p className="text-primary-foreground/80 max-w-2xl mx-auto">
-            Join us for live broadcasts of our services, special events, and prayer sessions
-          </p>
-        </div>
-      </section>
-
-      {/* Main Content */}
-      <section className="py-12 md:py-16">
+      {/* Main Content - YouTube-like Layout */}
+      <section className="py-6 md:py-8">
         <div className="container">
-          {/* Active Streams for Everyone */}
-          <div className="mb-12">
-            <ActiveStreams onJoinStream={handleJoinStream} />
-          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Main Video Player */}
+            <div className="lg:col-span-2">
+              {selectedStream ? (
+                <StreamPlayer
+                  externalUrl={selectedStream.external_stream_url}
+                  isLive={selectedStream.status === "live"}
+                  title={selectedStream.title}
+                  description={selectedStream.description || undefined}
+                  viewerCount={0}
+                />
+              ) : loading ? (
+                <Skeleton className="aspect-video w-full rounded-xl" />
+              ) : liveStreams.length > 0 ? (
+                <StreamPlayer
+                  externalUrl={liveStreams[0].external_stream_url}
+                  isLive={true}
+                  title={liveStreams[0].title}
+                  description={liveStreams[0].description || undefined}
+                />
+              ) : (
+                <Card className="aspect-video bg-gradient-to-br from-gray-900 to-black rounded-xl overflow-hidden">
+                  <CardContent className="h-full flex flex-col items-center justify-center text-white">
+                    <Radio className="w-16 h-16 mb-4 opacity-50" />
+                    <h3 className="text-xl font-semibold mb-2">No Live Stream</h3>
+                    <p className="text-gray-400 text-center max-w-md">
+                      There are no active live streams right now. Check back during our scheduled service times or browse recordings below.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-          {/* Selected Stream Player */}
-          {selectedStream && (
-            <div className="mb-12">
-              <StreamPlayer
-                externalUrl={selectedStream.external_stream_url}
-                isLive={true}
-                title={selectedStream.title}
-              />
+              {/* Sign in prompt for guests */}
+              {!user && (
+                <Card className="mt-4 border-accent/30 bg-accent/5">
+                  <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <LogIn className="w-5 h-5 text-accent" />
+                      <div>
+                        <p className="font-medium">Want to interact with the stream?</p>
+                        <p className="text-sm text-muted-foreground">Sign in to like, comment, and participate in live chat</p>
+                      </div>
+                    </div>
+                    <Button onClick={() => navigate("/auth")} className="bg-accent text-accent-foreground hover:bg-accent/90">
+                      Sign In
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
             </div>
-          )}
 
-          {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Upcoming Streams */}
-            <div className="lg:col-span-1">
-              <h3 className="text-xl font-serif font-semibold mb-4">Upcoming Streams</h3>
-              <div className="space-y-4">
+            {/* Sidebar - Live & Upcoming */}
+            <div className="space-y-6">
+              {/* Live Now Section */}
+              {liveStreams.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                    Live Now
+                  </h3>
+                  <div className="space-y-3">
+                    {liveStreams.map((stream) => (
+                      <Card 
+                        key={stream.id} 
+                        className={`cursor-pointer transition-all hover:shadow-md ${selectedStream?.id === stream.id ? 'ring-2 ring-accent' : 'border-border/50'}`}
+                        onClick={() => handleWatchStream(stream)}
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex gap-3">
+                            <div className="w-40 h-24 bg-gradient-to-br from-red-500/20 to-red-600/20 rounded-lg flex items-center justify-center relative overflow-hidden flex-shrink-0">
+                              <Play className="w-8 h-8 text-red-500" />
+                              <Badge className="absolute bottom-1 right-1 bg-red-600 text-white text-[10px] px-1.5 py-0.5">
+                                LIVE
+                              </Badge>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-sm line-clamp-2 mb-1">{stream.title}</h4>
+                              <p className="text-xs text-muted-foreground">Home of Super Stars</p>
+                              {stream.started_at && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Started {formatDistanceToNow(new Date(stream.started_at), { addSuffix: true })}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Upcoming Streams */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  Upcoming
+                </h3>
                 {loading ? (
-                  <>
-                    <Skeleton className="h-24 w-full" />
-                    <Skeleton className="h-24 w-full" />
-                  </>
+                  <div className="space-y-3">
+                    <Skeleton className="h-20 w-full" />
+                    <Skeleton className="h-20 w-full" />
+                  </div>
                 ) : upcomingStreams.length === 0 ? (
                   <Card className="border-border/50">
-                    <CardContent className="p-4 text-center text-muted-foreground">
+                    <CardContent className="p-4 text-center text-muted-foreground text-sm">
                       No upcoming streams scheduled
                     </CardContent>
                   </Card>
                 ) : (
-                  upcomingStreams.map((stream) => (
-                    <Card key={stream.id} className="hover:shadow-card transition-shadow border-border/50">
-                      <CardContent className="p-4">
-                        <h4 className="font-semibold mb-2">{stream.title}</h4>
-                        {stream.description && (
-                          <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{stream.description}</p>
-                        )}
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <div className="space-y-3">
+                    {upcomingStreams.slice(0, 3).map((stream) => (
+                      <Card key={stream.id} className="border-border/50 hover:shadow-md transition-shadow">
+                        <CardContent className="p-3">
+                          <h4 className="font-medium text-sm mb-1 line-clamp-1">{stream.title}</h4>
                           {stream.scheduled_at && (
-                            <>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
                                 {format(new Date(stream.scheduled_at), "EEE, MMM d")}
@@ -172,72 +257,91 @@ const Live = () => {
                                 <Clock className="w-3 h-3" />
                                 {format(new Date(stream.scheduled_at), "h:mm a")}
                               </span>
-                            </>
+                            </div>
                           )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
+          </div>
 
-            {/* Past Streams */}
-            <div className="lg:col-span-2">
-              <h3 className="text-xl font-serif font-semibold mb-4">Recent Recordings</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {loading ? (
-                  <>
-                    <Skeleton className="h-48 w-full" />
-                    <Skeleton className="h-48 w-full" />
-                  </>
-                ) : pastStreams.length === 0 ? (
-                  <Card className="border-border/50 col-span-full">
-                    <CardContent className="p-8 text-center text-muted-foreground">
-                      No recordings available yet
-                    </CardContent>
-                  </Card>
-                ) : (
-                  pastStreams.map((stream) => (
-                    <Card key={stream.id} className="overflow-hidden group hover:shadow-card transition-shadow cursor-pointer border-border/50">
-                      <div className="relative aspect-video bg-muted">
-                        {stream.recording_url ? (
+          {/* Past Recordings - YouTube Grid Style */}
+          <div className="mt-12">
+            <h2 className="text-2xl font-serif font-semibold mb-6">Recordings</h2>
+            {loading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="aspect-video w-full rounded-lg" />
+                ))}
+              </div>
+            ) : pastStreams.length === 0 ? (
+              <Card className="border-border/50">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  No recordings available yet
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {pastStreams.map((stream) => (
+                  <Card 
+                    key={stream.id} 
+                    className="overflow-hidden group cursor-pointer hover:shadow-lg transition-all border-border/50"
+                    onClick={() => handleWatchRecording(stream)}
+                  >
+                    <div className="relative aspect-video bg-muted">
+                      {stream.recording_url ? (
+                        stream.recording_url.includes("youtube.com") || stream.recording_url.includes("youtu.be") ? (
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-red-500/20 to-red-600/20">
+                            <Play className="w-12 h-12 text-red-500 group-hover:scale-110 transition-transform" />
+                          </div>
+                        ) : (
                           <video
                             src={stream.recording_url}
                             className="w-full h-full object-cover"
-                            poster=""
+                            preload="metadata"
                           />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-accent/20">
-                            <Play className="w-12 h-12 text-muted-foreground" />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                            <Play className="w-7 h-7 text-white" />
-                          </div>
+                        )
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-accent/20">
+                          <Play className="w-12 h-12 text-muted-foreground group-hover:scale-110 transition-transform" />
                         </div>
-                        <Badge className="absolute bottom-2 right-2 bg-black/70">
-                          {formatDuration(stream.started_at, stream.ended_at)}
-                        </Badge>
+                      )}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-full bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Play className="w-6 h-6 text-white ml-0.5" fill="white" />
+                        </div>
                       </div>
-                      <CardContent className="p-4">
-                        <h4 className="font-semibold mb-1 group-hover:text-accent transition-colors">{stream.title}</h4>
-                        <div className="flex items-center justify-between text-sm text-muted-foreground">
-                          <span>{stream.ended_at ? format(new Date(stream.ended_at), "MMM d, yyyy") : "N/A"}</span>
-                          {stream.view_count !== undefined && (
+                      <Badge className="absolute bottom-2 right-2 bg-black/80 text-white text-xs">
+                        {formatDuration(stream.started_at, stream.ended_at)}
+                      </Badge>
+                    </div>
+                    <CardContent className="p-3">
+                      <h4 className="font-medium text-sm line-clamp-2 mb-1 group-hover:text-accent transition-colors">
+                        {stream.title}
+                      </h4>
+                      <p className="text-xs text-muted-foreground">Home of Super Stars</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                        {stream.ended_at && (
+                          <span>{formatDistanceToNow(new Date(stream.ended_at), { addSuffix: true })}</span>
+                        )}
+                        {stream.view_count !== undefined && stream.view_count > 0 && (
+                          <>
+                            <span>•</span>
                             <span className="flex items-center gap-1">
                               <Eye className="w-3 h-3" />
                               {stream.view_count.toLocaleString()}
                             </span>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
+                          </>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
-            </div>
+            )}
           </div>
         </div>
       </section>
