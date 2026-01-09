@@ -4,11 +4,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Radio, Play, Calendar, Clock, Eye, ExternalLink } from "lucide-react";
+import { Radio, Play, Calendar, Clock, Eye } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useLiveStream } from "@/hooks/useLiveStream";
 import { StreamPlayer } from "@/components/live/StreamPlayer";
-import { StreamControls } from "@/components/live/StreamControls";
 import { ActiveStreams } from "@/components/live/ActiveStreams";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -30,19 +28,7 @@ interface PastStream {
 }
 
 const Live = () => {
-  const { user, isAdmin } = useAuth();
-  const {
-    isStreaming,
-    isRecording,
-    localStream,
-    viewerCount,
-    streamKey,
-    externalStreamUrl,
-    startStream,
-    stopStream,
-    startRecording,
-    stopRecording,
-  } = useLiveStream();
+  const { user } = useAuth();
 
   const [selectedStreamId, setSelectedStreamId] = useState<string | null>(null);
   const [selectedStream, setSelectedStream] = useState<{ id: string; title: string; external_stream_url: string | null } | null>(null);
@@ -134,31 +120,6 @@ const Live = () => {
       {/* Main Content */}
       <section className="py-12 md:py-16">
         <div className="container">
-          {/* Admin streaming controls */}
-          {isAdmin && (
-            <div className="mb-6">
-              <Card className="border-accent/30 bg-accent/5">
-                <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div>
-                    <h3 className="font-semibold text-foreground flex items-center gap-2">
-                      <Radio className="w-4 h-4 text-accent" />
-                      Admin Streaming Controls
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Create, start, and manage live streams from the admin panel
-                    </p>
-                  </div>
-                  <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90">
-                    <a href="/admin">
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Open Admin Panel
-                    </a>
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
           {/* Active Streams for Everyone */}
           <div className="mb-12">
             <ActiveStreams onJoinStream={handleJoinStream} />

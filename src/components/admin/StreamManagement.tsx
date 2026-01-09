@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -22,25 +24,68 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Play, Square, Radio, Save, Trash2, Plus, Link as LinkIcon, Eye } from "lucide-react";
+import { 
+  Play, 
+  Square, 
+  Radio, 
+  Save, 
+  Trash2, 
+  Plus, 
+  Link as LinkIcon, 
+  Eye,
+  Video,
+  VideoOff,
+  Mic,
+  MicOff,
+  Circle,
+  Copy,
+  ExternalLink,
+} from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
+import { useLiveStream } from "@/hooks/useLiveStream";
 import type { Tables, Enums } from "@/integrations/supabase/types";
 
 type LiveStream = Tables<"live_streams">;
 type StreamStatus = Enums<"stream_status">;
 type RecordingStatus = Enums<"recording_status">;
+type StreamSource = "camera" | "external";
 
 export function StreamManagement() {
   const { user } = useAuth();
+  const {
+    isStreaming,
+    isRecording,
+    localStream,
+    streamKey,
+    externalStreamUrl,
+    startStream: startLiveStream,
+    stopStream: stopLiveStream,
+    startRecording,
+    stopRecording,
+  } = useLiveStream();
+
+  const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const [streams, setStreams] = useState<LiveStream[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showGoLiveDialog, setShowGoLiveDialog] = useState(false);
+  const [showStopDialog, setShowStopDialog] = useState(false);
   const [selectedStream, setSelectedStream] = useState<LiveStream | null>(null);
   const [recordingUrl, setRecordingUrl] = useState("");
   const [newStream, setNewStream] = useState({ title: "", description: "", externalUrl: "" });
+  
+  // Go Live form state
+  const [liveTitle, setLiveTitle] = useState("");
+  const [liveDescription, setLiveDescription] = useState("");
+  const [streamSource, setStreamSource] = useState<StreamSource>("camera");
+  const [externalUrl, setExternalUrl] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
 
   useEffect(() => {
     fetchStreams();
@@ -54,6 +99,119 @@ export function StreamManagement() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // Preview video stream
+  useEffect(() => {
+    if (videoPreviewRef.current && previewStream) {
+      videoPreviewRef.current.srcObject = previewStream;
+    }
+  }, [previewStream]);
+
+  // Cleanup preview stream when dialog closes
+  useEffect(() => {
+    if (!showGoLiveDialog && previewStream) {
+      previewStream.getTracks().forEach(track => track.stop());
+      setPreviewStream(null);
+    }
+  }, [showGoLiveDialog]);
+
+  // Show video preview in the live section
+  useEffect(() => {
+    if (isStreaming && localStream && videoPreviewRef.current) {
+      videoPreviewRef.current.srcObject = localStream;
+    }
+  }, [isStreaming, localStream]);
+
+  const startCameraPreview = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720 },
+        audio: true,
+      });
+      setPreviewStream(stream);
+      setIsVideoEnabled(true);
+      setIsAudioEnabled(true);
+    } catch (error) {
+      console.error("Failed to get media:", error);
+      toast({ 
+        title: "Camera Error", 
+        description: "Could not access camera/microphone. Check permissions.", 
+        variant: "destructive" 
+      });
+    }
+  };
+
+  const togglePreviewVideo = () => {
+    if (previewStream) {
+      const videoTrack = previewStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoEnabled(videoTrack.enabled);
+      }
+    }
+  };
+
+  const togglePreviewAudio = () => {
+    if (previewStream) {
+      const audioTrack = previewStream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsAudioEnabled(audioTrack.enabled);
+      }
+    }
+  };
+
+  const handleOpenGoLive = () => {
+    setShowGoLiveDialog(true);
+    if (streamSource === "camera") {
+      startCameraPreview();
+    }
+  };
+
+  const handleGoLive = async () => {
+    if (!liveTitle.trim()) {
+      toast({ title: "Error", description: "Please enter a stream title", variant: "destructive" });
+      return;
+    }
+    if (streamSource === "external" && !externalUrl.trim()) {
+      toast({ title: "Error", description: "Please enter an external stream URL", variant: "destructive" });
+      return;
+    }
+
+    setIsStarting(true);
+    try {
+      // Stop preview stream first
+      if (previewStream) {
+        previewStream.getTracks().forEach(track => track.stop());
+        setPreviewStream(null);
+      }
+
+      await startLiveStream(
+        liveTitle, 
+        liveDescription, 
+        streamSource === "external" ? externalUrl : undefined
+      );
+      
+      setShowGoLiveDialog(false);
+      setLiveTitle("");
+      setLiveDescription("");
+      setExternalUrl("");
+    } catch (error) {
+      console.error("Failed to start stream:", error);
+    } finally {
+      setIsStarting(false);
+    }
+  };
+
+  const handleStopLive = async (saveRecording: boolean) => {
+    await stopLiveStream(saveRecording);
+    setShowStopDialog(false);
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied", description: `${label} copied to clipboard` });
+  };
 
   const fetchStreams = async () => {
     const { data, error } = await supabase
@@ -188,7 +346,122 @@ export function StreamManagement() {
   };
 
   return (
-    <Card>
+    <div className="space-y-6">
+      {/* Go Live Section */}
+      {isStreaming ? (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-destructive animate-pulse" />
+              You Are Live!
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Camera Preview */}
+            {localStream && !externalStreamUrl && (
+              <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                <video
+                  ref={videoPreviewRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            )}
+
+            {externalStreamUrl && (
+              <div className="p-4 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <ExternalLink className="w-4 h-4" />
+                  Streaming from external source
+                </p>
+              </div>
+            )}
+
+            {/* Stream Key */}
+            {streamKey && (
+              <div className="p-3 bg-muted rounded-lg space-y-2">
+                <p className="text-sm font-medium">Stream Key (for OBS/other tools):</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-background p-2 rounded truncate">{streamKey}</code>
+                  <Button size="sm" variant="outline" onClick={() => copyToClipboard(streamKey, "Stream Key")}>
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Recording Controls */}
+            <div className="flex flex-wrap gap-2">
+              {!isRecording ? (
+                <Button variant="outline" onClick={startRecording} className="flex-1">
+                  <Circle className="w-4 h-4 mr-2 text-destructive" />
+                  Start Recording
+                </Button>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  onClick={stopRecording} 
+                  className="flex-1 border-destructive text-destructive hover:bg-destructive/10"
+                >
+                  <Square className="w-4 h-4 mr-2" />
+                  Stop Recording
+                </Button>
+              )}
+            </div>
+
+            {/* End Stream Button */}
+            <Dialog open={showStopDialog} onOpenChange={setShowStopDialog}>
+              <DialogTrigger asChild>
+                <Button variant="destructive" className="w-full">
+                  <Square className="w-4 h-4 mr-2" />
+                  End Stream
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>End Live Stream</DialogTitle>
+                  <DialogDescription>
+                    What would you like to do with this stream recording?
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="flex-col sm:flex-row gap-2">
+                  <Button variant="outline" onClick={() => handleStopLive(false)} className="flex-1">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Discard Recording
+                  </Button>
+                  <Button onClick={() => handleStopLive(true)} className="flex-1 bg-accent text-accent-foreground hover:bg-accent/90">
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Recording
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-accent/30 bg-accent/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Radio className="w-5 h-5 text-accent" />
+              Go Live
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              Start a live stream using your camera or an external streaming source
+            </p>
+            <Button onClick={handleOpenGoLive} className="bg-accent text-accent-foreground hover:bg-accent/90">
+              <Video className="w-4 h-4 mr-2" />
+              Start Streaming
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Stream Management Table */}
+      <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Live Stream Management</CardTitle>
         <Button onClick={() => setShowCreateDialog(true)} className="bg-accent text-accent-foreground hover:bg-accent/90">
@@ -381,5 +654,165 @@ export function StreamManagement() {
         </DialogContent>
       </Dialog>
     </Card>
+
+      {/* Go Live Dialog */}
+      <Dialog open={showGoLiveDialog} onOpenChange={(open) => {
+        if (!open && previewStream) {
+          previewStream.getTracks().forEach(track => track.stop());
+          setPreviewStream(null);
+        }
+        setShowGoLiveDialog(open);
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Radio className="w-5 h-5 text-accent" />
+              Go Live
+            </DialogTitle>
+            <DialogDescription>
+              Configure your live stream settings and go live
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Stream Source Selection */}
+            <div className="space-y-3">
+              <Label>Stream Source</Label>
+              <RadioGroup 
+                value={streamSource} 
+                onValueChange={(v) => {
+                  setStreamSource(v as StreamSource);
+                  if (v === "camera" && !previewStream) {
+                    startCameraPreview();
+                  } else if (v === "external" && previewStream) {
+                    previewStream.getTracks().forEach(track => track.stop());
+                    setPreviewStream(null);
+                  }
+                }}
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="camera" id="source-camera" />
+                  <Label htmlFor="source-camera" className="font-normal cursor-pointer flex items-center gap-2">
+                    <Video className="w-4 h-4" />
+                    Camera & Microphone
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="external" id="source-external" />
+                  <Label htmlFor="source-external" className="font-normal cursor-pointer flex items-center gap-2">
+                    <ExternalLink className="w-4 h-4" />
+                    External Stream (YouTube, Facebook, etc.)
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Camera Preview */}
+            {streamSource === "camera" && (
+              <div className="space-y-3">
+                <Label>Camera Preview</Label>
+                <div className="aspect-video bg-black rounded-lg overflow-hidden relative">
+                  {previewStream ? (
+                    <video
+                      ref={videoPreviewRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                      <div className="text-center">
+                        <VideoOff className="w-12 h-12 mx-auto mb-2" />
+                        <p>Camera not available</p>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="mt-2"
+                          onClick={startCameraPreview}
+                        >
+                          Retry Camera
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {/* Preview Controls */}
+                {previewStream && (
+                  <div className="flex gap-2 justify-center">
+                    <Button
+                      size="sm"
+                      variant={isVideoEnabled ? "outline" : "destructive"}
+                      onClick={togglePreviewVideo}
+                    >
+                      {isVideoEnabled ? <Video className="w-4 h-4 mr-2" /> : <VideoOff className="w-4 h-4 mr-2" />}
+                      {isVideoEnabled ? "Camera On" : "Camera Off"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={isAudioEnabled ? "outline" : "destructive"}
+                      onClick={togglePreviewAudio}
+                    >
+                      {isAudioEnabled ? <Mic className="w-4 h-4 mr-2" /> : <MicOff className="w-4 h-4 mr-2" />}
+                      {isAudioEnabled ? "Mic On" : "Mic Off"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* External URL Input */}
+            {streamSource === "external" && (
+              <div className="space-y-2">
+                <Label htmlFor="external-url">External Stream URL</Label>
+                <Input
+                  id="external-url"
+                  placeholder="https://youtube.com/embed/... or live stream URL"
+                  value={externalUrl}
+                  onChange={(e) => setExternalUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter the embed URL from YouTube Live, Facebook Live, or other streaming platforms
+                </p>
+              </div>
+            )}
+
+            {/* Stream Details */}
+            <div className="space-y-2">
+              <Label htmlFor="live-title">Stream Title *</Label>
+              <Input
+                id="live-title"
+                placeholder="Sunday Service - January 2026"
+                value={liveTitle}
+                onChange={(e) => setLiveTitle(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="live-description">Description (optional)</Label>
+              <Textarea
+                id="live-description"
+                placeholder="Join us for this special broadcast..."
+                value={liveDescription}
+                onChange={(e) => setLiveDescription(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGoLiveDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleGoLive}
+              disabled={!liveTitle.trim() || isStarting || (streamSource === "external" && !externalUrl.trim())}
+              className="bg-accent text-accent-foreground hover:bg-accent/90"
+            >
+              <Radio className="w-4 h-4 mr-2" />
+              {isStarting ? "Going Live..." : "Go Live"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
