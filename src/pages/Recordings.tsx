@@ -3,7 +3,9 @@ import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Play, Eye, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Play, Eye, Clock, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 
@@ -20,6 +22,7 @@ interface Recording {
 const Recordings = () => {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
 
   useEffect(() => {
     fetchRecordings();
@@ -42,7 +45,7 @@ const Recordings = () => {
       .from("live_streams")
       .select("id, title, description, recording_url, started_at, ended_at")
       .eq("status", "ended")
-      .not("recording_url", "is", null)
+      .eq("recording_status", "saved")
       .order("ended_at", { ascending: false });
 
     if (!error && data) {
@@ -58,6 +61,28 @@ const Recordings = () => {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return hours > 0 ? `${hours}h ${mins}m` : `${minutes}m`;
+  };
+
+  // Convert YouTube URL to embed format
+  const getEmbedUrl = (url: string): string | null => {
+    if (!url) return null;
+    
+    // YouTube watch URL
+    const ytWatchMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+    if (ytWatchMatch) {
+      return `https://www.youtube.com/embed/${ytWatchMatch[1]}`;
+    }
+    
+    // YouTube embed URL
+    if (url.includes("youtube.com/embed/")) {
+      return url;
+    }
+    
+    return null;
+  };
+
+  const isYouTubeUrl = (url: string): boolean => {
+    return url.includes("youtube.com") || url.includes("youtu.be");
   };
 
   return (
@@ -88,7 +113,17 @@ const Recordings = () => {
               {recordings.map((rec) => (
                 <Card key={rec.id} className="overflow-hidden border-border/50 hover:shadow-card transition-shadow">
                   <div className="relative aspect-video bg-muted">
-                    {rec.recording_url ? (
+                    {rec.recording_url && isYouTubeUrl(rec.recording_url) ? (
+                      <div 
+                        className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-accent/20 cursor-pointer group"
+                        onClick={() => setSelectedRecording(rec)}
+                      >
+                        <div className="text-center">
+                          <Play className="w-12 h-12 mx-auto text-muted-foreground group-hover:text-primary transition-colors" />
+                          <span className="text-xs text-muted-foreground mt-2 block">Click to play</span>
+                        </div>
+                      </div>
+                    ) : rec.recording_url ? (
                       <video
                         src={rec.recording_url}
                         className="w-full h-full object-cover"
@@ -100,6 +135,9 @@ const Recordings = () => {
                       </div>
                     )}
                     <Badge className="absolute top-2 left-2 bg-black/70">Replay</Badge>
+                    {rec.recording_url && isYouTubeUrl(rec.recording_url) && (
+                      <Badge className="absolute top-2 right-2 bg-red-600">YouTube</Badge>
+                    )}
                   </div>
                   <CardContent className="p-4 space-y-2">
                     <h3 className="font-semibold line-clamp-2">{rec.title}</h3>
@@ -118,14 +156,67 @@ const Recordings = () => {
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatDuration(rec.started_at, rec.ended_at)}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {formatDuration(rec.started_at, rec.ended_at)}
+                      </span>
+                      {rec.recording_url && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedRecording(rec)}
+                        >
+                          <Play className="w-3 h-3 mr-1" />
+                          Watch
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
           )}
+
+          {/* Video Player Dialog */}
+          <Dialog open={!!selectedRecording} onOpenChange={(open) => !open && setSelectedRecording(null)}>
+            <DialogContent className="max-w-4xl p-0">
+              <DialogHeader className="p-4 pb-0">
+                <DialogTitle>{selectedRecording?.title}</DialogTitle>
+              </DialogHeader>
+              <div className="aspect-video bg-black">
+                {selectedRecording?.recording_url && isYouTubeUrl(selectedRecording.recording_url) ? (
+                  <iframe
+                    src={getEmbedUrl(selectedRecording.recording_url) || selectedRecording.recording_url}
+                    className="w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : selectedRecording?.recording_url ? (
+                  <video
+                    src={selectedRecording.recording_url}
+                    className="w-full h-full"
+                    controls
+                    autoPlay
+                  />
+                ) : null}
+              </div>
+              {selectedRecording?.description && (
+                <p className="p-4 pt-2 text-sm text-muted-foreground">{selectedRecording.description}</p>
+              )}
+              {selectedRecording?.recording_url && (
+                <div className="p-4 pt-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(selectedRecording.recording_url!, "_blank")}
+                  >
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    Open in New Tab
+                  </Button>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
       </section>
     </Layout>

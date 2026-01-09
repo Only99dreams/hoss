@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
-import { Radio, Users, Clock } from "lucide-react";
+import { Radio, Users, Clock, ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 interface LiveStream {
@@ -13,6 +13,7 @@ interface LiveStream {
   status: string;
   started_at: string | null;
   created_at: string;
+  external_stream_url: string | null;
 }
 
 interface ActiveStreamsProps {
@@ -50,7 +51,7 @@ export function ActiveStreams({ onJoinStream }: ActiveStreamsProps) {
   const fetchStreams = async () => {
     const { data, error } = await supabase
       .from("live_streams")
-      .select("*")
+      .select("id, title, description, status, started_at, created_at, external_stream_url")
       .eq("status", "live")
       .order("started_at", { ascending: false });
 
@@ -118,6 +119,12 @@ export function ActiveStreams({ onJoinStream }: ActiveStreamsProps) {
                   <span className="flex items-center gap-1">
                     <Clock className="w-4 h-4" />
                     Started {formatDistanceToNow(new Date(stream.started_at), { addSuffix: true })}
+                  </span>
+                )}
+                {stream.external_stream_url && (
+                  <span className="flex items-center gap-1 text-accent">
+                    <ExternalLink className="w-4 h-4" />
+                    External
                   </span>
                 )}
               </div>

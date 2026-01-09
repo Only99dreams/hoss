@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Radio, Play, Calendar, Clock, Eye } from "lucide-react";
+import { Radio, Play, Calendar, Clock, Eye, ExternalLink } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLiveStream } from "@/hooks/useLiveStream";
 import { StreamPlayer } from "@/components/live/StreamPlayer";
@@ -133,30 +134,38 @@ const Live = () => {
       {/* Main Content */}
       <section className="py-12 md:py-16">
         <div className="container">
-          {/* Admin streaming controls are now available only in the admin area */}
+          {/* Admin streaming controls */}
           {isAdmin && (
             <div className="mb-6">
-              <Card className="border-border/50">
-                <CardContent className="p-4 text-sm text-muted-foreground flex flex-col gap-2">
-                  <span className="font-semibold text-foreground">Admin streaming controls</span>
-                  <span>Go to the Admin panel to start or manage live streams.</span>
-                  <Button asChild className="w-fit mt-2 bg-accent text-accent-foreground hover:bg-accent/90">
-                    <a href="/admin">Open Admin Streaming</a>
+              <Card className="border-accent/30 bg-accent/5">
+                <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-semibold text-foreground flex items-center gap-2">
+                      <Radio className="w-4 h-4 text-accent" />
+                      Admin Streaming Controls
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Create, start, and manage live streams from the admin panel
+                    </p>
+                  </div>
+                  <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90">
+                    <a href="/admin">
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Open Admin Panel
+                    </a>
                   </Button>
                 </CardContent>
               </Card>
             </div>
           )}
 
-          {/* Active Streams for Viewers */}
-          {!isAdmin && (
-            <div className="mb-12">
-              <ActiveStreams onJoinStream={handleJoinStream} />
-            </div>
-          )}
+          {/* Active Streams for Everyone */}
+          <div className="mb-12">
+            <ActiveStreams onJoinStream={handleJoinStream} />
+          </div>
 
-          {/* Viewer Stream Player */}
-          {selectedStream && !isAdmin && (
+          {/* Selected Stream Player */}
+          {selectedStream && (
             <div className="mb-12">
               <StreamPlayer
                 externalUrl={selectedStream.external_stream_url}

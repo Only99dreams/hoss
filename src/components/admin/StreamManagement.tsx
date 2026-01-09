@@ -5,12 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -20,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Play, Square, Radio, Save, Trash2, Plus } from "lucide-react";
+import { Play, Square, Radio, Save, Trash2, Plus, Link as LinkIcon, Eye } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
@@ -35,6 +37,9 @@ export function StreamManagement() {
   const [streams, setStreams] = useState<LiveStream[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [selectedStream, setSelectedStream] = useState<LiveStream | null>(null);
+  const [recordingUrl, setRecordingUrl] = useState("");
   const [newStream, setNewStream] = useState({ title: "", description: "", externalUrl: "" });
 
   useEffect(() => {
@@ -135,6 +140,33 @@ export function StreamManagement() {
     }
   };
 
+  const saveRecordingWithUrl = async () => {
+    if (!selectedStream) return;
+
+    const { error } = await supabase
+      .from("live_streams")
+      .update({ 
+        recording_status: "saved" as RecordingStatus,
+        recording_url: recordingUrl || null
+      })
+      .eq("id", selectedStream.id);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to save recording", variant: "destructive" });
+    } else {
+      toast({ title: "Saved", description: "Recording saved successfully" });
+      setShowSaveDialog(false);
+      setSelectedStream(null);
+      setRecordingUrl("");
+    }
+  };
+
+  const openSaveDialog = (stream: LiveStream) => {
+    setSelectedStream(stream);
+    setRecordingUrl(stream.recording_url || "");
+    setShowSaveDialog(true);
+  };
+
   const getStatusBadge = (status: StreamStatus) => {
     switch (status) {
       case "live":
@@ -229,7 +261,7 @@ export function StreamManagement() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => updateRecordingStatus(stream, "saved")}
+                            onClick={() => openSaveDialog(stream)}
                           >
                             <Save className="w-4 h-4 mr-1" />
                             Save
@@ -242,6 +274,18 @@ export function StreamManagement() {
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </>
+                      )}
+                      {stream.status === "ended" && stream.recording_url && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          asChild
+                        >
+                          <a href={stream.recording_url} target="_blank" rel="noopener noreferrer">
+                            <Eye className="w-4 h-4 mr-1" />
+                            View
+                          </a>
+                        </Button>
                       )}
                     </div>
                   </TableCell>
@@ -296,6 +340,44 @@ export function StreamManagement() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save Recording Dialog */}
+      <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Recording</DialogTitle>
+            <DialogDescription>
+              Add a recording URL so viewers can watch this stream later
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="recording-url">Recording URL (Optional)</Label>
+              <div className="flex items-center gap-2 mt-2">
+                <LinkIcon className="w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="recording-url"
+                  placeholder="https://youtube.com/watch?v=... or video URL"
+                  value={recordingUrl}
+                  onChange={(e) => setRecordingUrl(e.target.value)}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Enter the URL where this stream recording can be watched (YouTube, Vimeo, etc.)
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveRecordingWithUrl} className="bg-accent text-accent-foreground hover:bg-accent/90">
+              <Save className="w-4 h-4 mr-2" />
+              Save Recording
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Card>
