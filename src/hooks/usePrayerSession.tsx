@@ -237,15 +237,18 @@ export function usePrayerRoom(sessionId: string | null) {
       setIsMuted(!withAudio);
       setIsVideoOn(withVideo);
 
-      // Join in database
+      // Join in database (upsert to handle rejoining)
       const { data, error } = await supabase
         .from("prayer_participants")
-        .insert({
+        .upsert({
           session_id: sessionId,
           user_id: user.id,
           can_speak: false,
           can_video: false,
           is_muted: !withAudio,
+          left_at: null, // Clear left_at so they're active again
+        }, {
+          onConflict: "session_id,user_id"
         })
         .select()
         .single();
