@@ -86,13 +86,23 @@ export function StreamManagement() {
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  
+  // Saved recordings state
+  const [savedRecordings, setSavedRecordings] = useState<LiveStream[]>([]);
+  const [showEditRecordingDialog, setShowEditRecordingDialog] = useState(false);
+  const [editingRecording, setEditingRecording] = useState<LiveStream | null>(null);
+  const [editRecordingUrl, setEditRecordingUrl] = useState("");
 
   useEffect(() => {
     fetchStreams();
+    fetchSavedRecordings();
 
     const channel = supabase
       .channel("streams_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "live_streams" }, fetchStreams)
+      .on("postgres_changes", { event: "*", schema: "public", table: "live_streams" }, () => {
+        fetchStreams();
+        fetchSavedRecordings();
+      })
       .subscribe();
 
     return () => {
@@ -225,6 +235,56 @@ export function StreamManagement() {
       setStreams(data || []);
     }
     setLoading(false);
+  };
+
+  const fetchSavedRecordings = async () => {
+    const { data, error } = await supabase
+      .from("live_streams")
+      .select("*")
+      .eq("status", "ended")
+      .eq("recording_status", "saved")
+      .order("ended_at", { ascending: false });
+
+    if (!error && data) {
+      setSavedRecordings(data);
+    }
+  };
+
+  const deleteRecording = async (recording: LiveStream) => {
+    const { error } = await supabase
+      .from("live_streams")
+      .update({ recording_status: "discarded" as RecordingStatus, recording_url: null })
+      .eq("id", recording.id);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to delete recording", variant: "destructive" });
+    } else {
+      toast({ title: "Deleted", description: "Recording has been removed" });
+    }
+  };
+
+  const openEditRecordingDialog = (recording: LiveStream) => {
+    setEditingRecording(recording);
+    setEditRecordingUrl(recording.recording_url || "");
+    setShowEditRecordingDialog(true);
+  };
+
+  const updateRecordingUrl = async () => {
+    if (!editingRecording) return;
+
+    const { error } = await supabase
+      .from("live_streams")
+      .update({ recording_url: editRecordingUrl || null })
+      .eq("id", editingRecording.id);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to update recording", variant: "destructive" });
+    } else {
+      toast({ title: "Updated", description: "Recording URL has been updated" });
+      setShowEditRecordingDialog(false);
+      setEditingRecording(null);
+      setEditRecordingUrl("");
+    }
   };
 
   const createStream = async () => {
@@ -568,6 +628,93 @@ export function StreamManagement() {
           </Table>
         )}
       </CardContent>
+    </Card>
+
+      {/* Saved Recordings Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Play className="w-5 h-5" />
+            Saved Recordings
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {savedRecordings.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Play className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No saved recordings yet</p>
+              <p className="text-sm">Recordings will appear here after you save them</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {savedRecordings.map((recording) => (
+                <Card key={recording.id} className="overflow-hidden border-border/50">
+                  <div className="aspect-video bg-muted relative">
+                    {recording.recording_url ? (
+                      recording.recording_url.includes("youtube.com") || recording.recording_url.includes("youtu.be") ? (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-red-500/20 to-red-600/20">
+                          <div className="text-center">
+                            <Play className="w-10 h-10 mx-auto text-red-500 mb-2" />
+                            <Badge className="bg-red-600">YouTube</Badge>
+                          </div>
+                        </div>
+                      ) : (
+                        <video
+                          src={recording.recording_url}
+                          className="w-full h-full object-cover"
+                          preload="metadata"
+                        />
+                      )
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-accent/20">
+                        <Play className="w-10 h-10 text-muted-foreground" />
+                      </div>
+                    )}
+                    <Badge className="absolute top-2 left-2 bg-black/70">Recording</Badge>
+                  </div>
+                  <CardContent className="p-4 space-y-3">
+                    <div>
+                      <h4 className="font-semibold line-clamp-1">{recording.title}</h4>
+                      {recording.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-2">{recording.description}</p>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {recording.ended_at && format(new Date(recording.ended_at), "MMM d, yyyy h:mm a")}
+                    </div>
+                    <div className="flex gap-2">
+                      {recording.recording_url && (
+                        <Button size="sm" variant="outline" asChild className="flex-1">
+                          <a href={recording.recording_url} target="_blank" rel="noopener noreferrer">
+                            <Eye className="w-3 h-3 mr-1" />
+                            Watch
+                          </a>
+                        </Button>
+                      )}
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => openEditRecordingDialog(recording)}
+                      >
+                        <LinkIcon className="w-3 h-3 mr-1" />
+                        Edit URL
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => deleteRecording(recording)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Create Stream Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
@@ -809,6 +956,44 @@ export function StreamManagement() {
             >
               <Radio className="w-4 h-4 mr-2" />
               {isStarting ? "Going Live..." : "Go Live"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Recording URL Dialog */}
+      <Dialog open={showEditRecordingDialog} onOpenChange={setShowEditRecordingDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Recording URL</DialogTitle>
+            <DialogDescription>
+              Update the URL where this recording can be watched
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="edit-recording-url">Recording URL</Label>
+              <div className="flex items-center gap-2 mt-2">
+                <LinkIcon className="w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="edit-recording-url"
+                  placeholder="https://youtube.com/watch?v=... or video URL"
+                  value={editRecordingUrl}
+                  onChange={(e) => setEditRecordingUrl(e.target.value)}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Enter the URL where this stream recording can be watched (YouTube, Vimeo, etc.)
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditRecordingDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={updateRecordingUrl} className="bg-accent text-accent-foreground hover:bg-accent/90">
+              <Save className="w-4 h-4 mr-2" />
+              Update URL
             </Button>
           </DialogFooter>
         </DialogContent>
