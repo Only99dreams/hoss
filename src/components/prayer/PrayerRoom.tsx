@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { 
   Mic, MicOff, Video, VideoOff, Hand, PhoneOff, Users, 
-  Volume2, VolumeX, MessageSquare, Send, Settings, Monitor
+  MessageSquare, Send, MoreVertical, X
 } from "lucide-react";
 import { usePrayerRoom } from "@/hooks/usePrayerSession";
 
@@ -39,9 +39,44 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
   const [previewMuted, setPreviewMuted] = useState(false);
   const [previewVideoOn, setPreviewVideoOn] = useState(true);
   const [showChat, setShowChat] = useState(false);
+  const [showParticipants, setShowParticipants] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{id: string; user: string; message: string; timestamp: Date}>>([]);
   const [chatInput, setChatInput] = useState("");
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  // Audio level detection for speaking indicator
+  const setupAudioAnalyser = useCallback((stream: MediaStream) => {
+    try {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      
+      const audioContext = new AudioCtx();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      analyser.fftSize = 256;
+      audioContextRef.current = audioContext;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      
+      const checkAudioLevel = () => {
+        if (!audioContextRef.current || audioContextRef.current.state === 'closed') return;
+        analyser.getByteFrequencyData(dataArray);
+        const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+        setIsSpeaking(average > 25);
+        animationFrameRef.current = requestAnimationFrame(checkAudioLevel);
+      };
+      checkAudioLevel();
+    } catch (e) {
+      console.error("Audio analyser error:", e);
+    }
+  }, []);
 
   // Preview setup
   useEffect(() => {
@@ -52,15 +87,77 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
       if (previewStream) {
         previewStream.getTracks().forEach(track => track.stop());
       }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+      }
     };
   }, [showPreview, isConnected]);
 
   const setupPreview = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error("Media devices not supported");
+        return;
+      }
+      
+      // Try to get both audio and video
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }
+        });
+      } catch (bothErr) {
+        console.warn("Could not get both audio and video for preview, trying separately:", bothErr);
+        
+        // Try individually
+        let audioStream: MediaStream | null = null;
+        let videoStream: MediaStream | null = null;
+        
+        try {
+          audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (e) {
+          console.warn("No audio for preview:", e);
+        }
+        
+        try {
+          videoStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
+          });
+        } catch (e) {
+          console.warn("No video for preview:", e);
+        }
+        
+        if (!audioStream && !videoStream) {
+          console.error("Could not access any media devices");
+          return;
+        }
+        
+        stream = new MediaStream();
+        if (audioStream) {
+          audioStream.getAudioTracks().forEach(track => stream.addTrack(track));
+        }
+        if (videoStream) {
+          videoStream.getVideoTracks().forEach(track => stream.addTrack(track));
+        }
+        
+        // Update state based on what's available
+        if (!videoStream) {
+          setPreviewVideoOn(false);
+        }
+        if (!audioStream) {
+          setPreviewMuted(true);
+        }
+      }
+      
+      console.log("Preview stream ready:", {
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length
       });
+      
       setPreviewStream(stream);
       if (previewVideoRef.current) {
         previewVideoRef.current.srcObject = stream;
@@ -72,15 +169,24 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
 
   const togglePreviewMute = () => {
     if (previewStream) {
-      previewStream.getAudioTracks().forEach(track => track.enabled = previewMuted);
-      setPreviewMuted(!previewMuted);
+      const newMuted = !previewMuted;
+      // When muted, track.enabled should be false
+      previewStream.getAudioTracks().forEach(track => {
+        track.enabled = !newMuted;
+        console.log(`Preview audio track: enabled=${track.enabled}`);
+      });
+      setPreviewMuted(newMuted);
     }
   };
 
   const togglePreviewVideo = () => {
     if (previewStream) {
-      previewStream.getVideoTracks().forEach(track => track.enabled = !previewVideoOn);
-      setPreviewVideoOn(!previewVideoOn);
+      const newVideoOn = !previewVideoOn;
+      previewStream.getVideoTracks().forEach(track => {
+        track.enabled = newVideoOn;
+        console.log(`Preview video track: enabled=${track.enabled}`);
+      });
+      setPreviewVideoOn(newVideoOn);
     }
   };
 
@@ -92,13 +198,33 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
     await joinSession(!previewMuted, previewVideoOn);
   };
 
+  // Assign local stream to video element whenever stream or video state changes
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
+      console.log("Local video assigned:", {
+        hasAudio: localStream.getAudioTracks().length > 0,
+        hasVideo: localStream.getVideoTracks().length > 0,
+        videoEnabled: localStream.getVideoTracks()[0]?.enabled,
+        audioEnabled: localStream.getAudioTracks()[0]?.enabled
+      });
     }
-  }, [localStream]);
+  }, [localStream, isVideoOn]);
+
+  // Setup audio analyser for speaking detection
+  useEffect(() => {
+    if (localStream && localStream.getAudioTracks().length > 0) {
+      setupAudioAnalyser(localStream);
+    }
+  }, [localStream, setupAudioAnalyser]);
 
   const handleLeave = async () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
+    }
     await leaveSession();
     onLeave();
   };
@@ -113,33 +239,41 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
     };
     setChatMessages(prev => [...prev, newMessage]);
     setChatInput("");
-    // In production, broadcast this via Supabase realtime
+  };
+
+  // Calculate grid layout based on participant count
+  const getGridClass = (count: number) => {
+    if (count === 1) return 'grid-cols-1';
+    if (count === 2) return 'grid-cols-1 md:grid-cols-2';
+    if (count <= 4) return 'grid-cols-2';
+    if (count <= 6) return 'grid-cols-2 md:grid-cols-3';
+    return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
   };
 
   // Preview screen before joining
   if (!isConnected && showPreview) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 space-y-6">
-        <div className="text-center mb-4">
-          <h3 className="text-2xl font-serif font-semibold mb-2">Ready to join?</h3>
-          <p className="text-muted-foreground">"{session?.title}"</p>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
+        <div className="text-center mb-4 md:mb-6">
+          <h3 className="text-xl md:text-2xl font-serif font-semibold mb-2">Ready to join?</h3>
+          <p className="text-muted-foreground text-sm md:text-base">"{session?.title}"</p>
         </div>
 
         {/* Preview Video */}
-        <Card className="relative overflow-hidden w-full max-w-2xl aspect-video bg-muted">
-          {previewVideoOn && previewStream ? (
+        <div className="relative w-full max-w-lg aspect-video bg-muted rounded-2xl overflow-hidden shadow-lg">
+          {previewVideoOn && previewStream && previewStream.getVideoTracks().length > 0 ? (
             <video
               ref={previewVideoRef}
               autoPlay
               muted
               playsInline
-              className="w-full h-full object-cover mirror"
+              className="w-full h-full object-cover"
               style={{ transform: 'scaleX(-1)' }}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-accent/10">
-              <Avatar className="w-32 h-32">
-                <AvatarFallback className="bg-accent/20 text-accent text-4xl">
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+              <Avatar className="w-20 h-20 md:w-28 md:h-28">
+                <AvatarFallback className="bg-accent/20 text-accent text-2xl md:text-4xl">
                   You
                 </AvatarFallback>
               </Avatar>
@@ -147,38 +281,36 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
           )}
           
           {/* Preview Controls */}
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 md:gap-3">
             <Button
               variant={previewMuted ? "destructive" : "secondary"}
-              size="lg"
-              className="rounded-full w-14 h-14 shadow-lg"
+              size="default"
+              className="rounded-full w-12 h-12 md:w-14 md:h-14 shadow-lg"
               onClick={togglePreviewMute}
             >
-              {previewMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+              {previewMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </Button>
 
             <Button
               variant={previewVideoOn ? "secondary" : "destructive"}
-              size="lg"
-              className="rounded-full w-14 h-14 shadow-lg"
+              size="default"
+              className="rounded-full w-12 h-12 md:w-14 md:h-14 shadow-lg"
               onClick={togglePreviewVideo}
             >
-              {previewVideoOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+              {previewVideoOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
             </Button>
           </div>
-        </Card>
-
-        <div className="flex gap-4">
-          <Button 
-            onClick={handleJoinNow} 
-            size="lg"
-            className="bg-accent text-accent-foreground hover:bg-accent/90"
-          >
-            Join now
-          </Button>
         </div>
+
+        <Button 
+          onClick={handleJoinNow} 
+          size="lg"
+          className="mt-6 bg-accent text-accent-foreground hover:bg-accent/90 px-8"
+        >
+          Join now
+        </Button>
         
-        <p className="text-sm text-muted-foreground text-center max-w-md">
+        <p className="text-xs md:text-sm text-muted-foreground text-center mt-4 max-w-sm">
           Check your camera and microphone before joining
         </p>
       </div>
@@ -189,158 +321,217 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
     return null;
   }
 
+  const totalParticipants = participants.length + 1;
+
   return (
-    <div className="h-[calc(100vh-12rem)] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <div className="flex items-center gap-4">
-          <div>
-            <h2 className="text-xl font-serif font-bold">{session?.title}</h2>
-            <p className="text-sm text-muted-foreground flex items-center gap-2">
-              <Badge variant="destructive" className="text-xs">
-                <span className="w-2 h-2 rounded-full bg-current mr-1.5 animate-pulse" />
-                LIVE
-              </Badge>
-              <span className="text-muted-foreground">•</span>
-              <Users className="w-3 h-3" />
-              {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
-            </p>
-          </div>
+    <div className="flex flex-col h-[calc(100vh-8rem)] md:h-[calc(100vh-10rem)] bg-background">
+      {/* Header - Mobile optimized */}
+      <div className="flex items-center justify-between px-3 py-2 md:px-4 md:py-3 border-b bg-card">
+        <div className="flex items-center gap-2 min-w-0">
+          <Badge variant="destructive" className="text-xs shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-current mr-1 animate-pulse" />
+            LIVE
+          </Badge>
+          <h2 className="text-sm md:text-lg font-semibold truncate">{session?.title}</h2>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-2">
           <Button 
             variant="ghost" 
             size="sm"
-            onClick={() => setShowChat(!showChat)}
-            className={showChat ? "bg-accent/10" : ""}
+            onClick={() => { setShowParticipants(!showParticipants); setShowChat(false); }}
+            className="relative px-2 md:px-3"
           >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            Chat
+            <Users className="w-4 h-4" />
+            <span className="ml-1 text-xs">{totalParticipants}</span>
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => { setShowChat(!showChat); setShowParticipants(false); }}
+            className={`px-2 md:px-3 ${showChat ? "bg-accent/10" : ""}`}
+          >
+            <MessageSquare className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Main Video Area */}
-        <div className="flex-1 p-4 overflow-y-auto">
-          <div className={`grid gap-4 h-full ${
-            participants.length === 1 ? 'grid-cols-1' :
-            participants.length === 2 ? 'grid-cols-2' :
-            participants.length <= 4 ? 'grid-cols-2 grid-rows-2' :
-            participants.length <= 6 ? 'grid-cols-3 grid-rows-2' :
-            participants.length <= 9 ? 'grid-cols-3 grid-rows-3' :
-            'grid-cols-4 auto-rows-fr'
-          }`}>
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Video Grid */}
+        <div className={`flex-1 p-2 md:p-4 overflow-y-auto transition-all ${(showChat || showParticipants) ? 'hidden md:block md:mr-80' : ''}`}>
+          <div className={`grid gap-2 md:gap-3 h-full auto-rows-fr ${getGridClass(totalParticipants)}`}>
             {/* Local Video */}
-            <Card className="relative overflow-hidden bg-muted group">
-              {isVideoOn ? (
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="w-full h-full object-cover"
-                  style={{ transform: 'scaleX(-1)' }}
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-accent/10">
-                  <Avatar className="w-20 h-20">
-                    <AvatarFallback className="bg-accent/20 text-accent text-2xl">
+            <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] ${isSpeaking && !isMuted ? 'ring-4 ring-green-500 ring-opacity-75' : ''}`}>
+              {/* Always render video element, control visibility with CSS */}
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className={`w-full h-full object-cover ${isVideoOn && localStream ? 'block' : 'hidden'}`}
+                style={{ transform: 'scaleX(-1)' }}
+              />
+              {/* Show avatar when video is off */}
+              {(!isVideoOn || !localStream) && (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900 aspect-video">
+                  <Avatar className="w-16 h-16 md:w-24 md:h-24">
+                    <AvatarFallback className="bg-accent/30 text-accent text-xl md:text-3xl">
                       You
                     </AvatarFallback>
                   </Avatar>
                 </div>
               )}
-              <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 px-2 py-1 rounded bg-black/60 backdrop-blur-sm">
-                  <span className="text-white text-sm font-medium">You</span>
-                  {isMuted && <MicOff className="w-3 h-3 text-white" />}
-                </div>
-              </div>
-              {handRaised && (
-                <div className="absolute top-3 right-3">
-                  <div className="bg-accent text-accent-foreground rounded-full p-2 animate-bounce">
-                    <Hand className="w-5 h-5" />
-                  </div>
+              
+              {/* Speaking indicator */}
+              {isSpeaking && !isMuted && (
+                <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-full bg-green-500 text-white text-xs">
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  <span className="hidden sm:inline">Speaking</span>
                 </div>
               )}
-            </Card>
+
+              {/* Hand raised indicator */}
+              {handRaised && (
+                <div className="absolute top-2 right-2 bg-yellow-500 text-white rounded-full p-1.5 md:p-2 animate-bounce shadow-lg">
+                  <Hand className="w-4 h-4 md:w-5 md:h-5" />
+                </div>
+              )}
+
+              {/* Name tag */}
+              <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/70 backdrop-blur-sm">
+                  <span className="text-white text-xs md:text-sm font-medium">You</span>
+                  {isMuted ? (
+                    <MicOff className="w-3 h-3 text-red-400" />
+                  ) : (
+                    <Mic className="w-3 h-3 text-green-400" />
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Remote Participants */}
-            {participants
-              .filter((p) => p.user_id !== localStream?.id)
-              .map((participant) => (
-                <ParticipantVideo
-                  key={participant.id}
-                  participant={participant}
-                  stream={remoteStreams.get(participant.user_id)}
-                />
-              ))}
+            {participants.map((participant) => (
+              <ParticipantVideo
+                key={participant.id}
+                participant={participant}
+                stream={remoteStreams.get(participant.user_id)}
+              />
+            ))}
           </div>
         </div>
 
-        {/* Chat Sidebar */}
-        {showChat && (
-          <Card className="w-80 m-4 flex flex-col border-l">
-            <CardContent className="p-4 flex-1 flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Chat</h3>
-                <Button variant="ghost" size="sm" onClick={() => setShowChat(false)}>
-                  ✕
-                </Button>
-              </div>
-              
-              <ScrollArea className="flex-1 mb-4 pr-4">
-                <div className="space-y-3">
-                  {chatMessages.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-8">
-                      No messages yet. Start the conversation!
-                    </p>
-                  ) : (
-                    chatMessages.map((msg) => (
-                      <div key={msg.id} className="space-y-1">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-sm font-medium">{msg.user}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <p className="text-sm">{msg.message}</p>
+        {/* Sidebar - Chat or Participants */}
+        {(showChat || showParticipants) && (
+          <div className="absolute inset-0 md:relative md:inset-auto md:w-80 bg-card border-l flex flex-col z-10">
+            <div className="flex items-center justify-between p-3 border-b">
+              <h3 className="font-semibold text-sm">
+                {showChat ? 'In-call messages' : 'Participants'}
+              </h3>
+              <Button variant="ghost" size="sm" onClick={() => { setShowChat(false); setShowParticipants(false); }}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            {showChat ? (
+              <>
+                <ScrollArea className="flex-1 p-3">
+                  <div className="space-y-3">
+                    {chatMessages.length === 0 ? (
+                      <div className="text-center py-8">
+                        <MessageSquare className="w-10 h-10 mx-auto mb-2 text-muted-foreground/50" />
+                        <p className="text-sm text-muted-foreground">No messages yet</p>
+                        <p className="text-xs text-muted-foreground">Send a message to everyone</p>
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      chatMessages.map((msg) => (
+                        <div key={msg.id} className="space-y-1">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-sm font-medium">{msg.user}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-sm">{msg.message}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+                <div className="p-3 border-t">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Send a message..."
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                      className="text-sm"
+                    />
+                    <Button size="sm" onClick={sendMessage} className="shrink-0">
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <ScrollArea className="flex-1 p-3">
+                <div className="space-y-2">
+                  {/* Self */}
+                  <div className="flex items-center gap-3 p-2 rounded-lg bg-accent/5">
+                    <Avatar className="w-10 h-10">
+                      <AvatarFallback className="bg-accent/20 text-accent">You</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">You</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {handRaised && <Hand className="w-4 h-4 text-yellow-500" />}
+                      {isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
+                    </div>
+                  </div>
+                  
+                  {/* Other participants */}
+                  {participants.map((p) => (
+                    <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
+                      <Avatar className="w-10 h-10">
+                        <AvatarImage src={p.profile?.avatar_url || undefined} />
+                        <AvatarFallback className="text-sm">
+                          {p.profile?.full_name?.[0] || "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {p.profile?.full_name || "Anonymous"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {p.hand_raised && <Hand className="w-4 h-4 text-yellow-500" />}
+                        {p.is_muted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </ScrollArea>
-              
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Send a message..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                />
-                <Button size="sm" onClick={sendMessage}>
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
         )}
       </div>
 
       {/* Bottom Controls Bar - Google Meet Style */}
-      <div className="border-t bg-card">
-        <div className="flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      <div className="border-t bg-card px-2 py-3 md:px-6 md:py-4">
+        <div className="flex items-center justify-between max-w-3xl mx-auto">
+          {/* Time - hidden on mobile */}
+          <div className="hidden md:flex items-center text-sm text-muted-foreground min-w-[80px]">
+            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Main Controls */}
+          <div className="flex items-center justify-center gap-2 md:gap-3 flex-1">
             <Button
               variant={isMuted ? "destructive" : "secondary"}
-              size="lg"
-              className="rounded-full w-14 h-14"
+              size="default"
+              className="rounded-full w-11 h-11 md:w-14 md:h-14"
               onClick={toggleMute}
             >
               {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -348,38 +539,39 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
 
             <Button
               variant={isVideoOn ? "secondary" : "destructive"}
-              size="lg"
-              className="rounded-full w-14 h-14"
+              size="default"
+              className="rounded-full w-11 h-11 md:w-14 md:h-14"
               onClick={toggleVideo}
             >
               {isVideoOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
             </Button>
 
             <Button
-              variant="outline"
-              size="lg"
-              className={`rounded-full w-14 h-14 ${handRaised ? "bg-accent text-accent-foreground" : ""}`}
+              variant={handRaised ? "default" : "outline"}
+              size="default"
+              className={`rounded-full w-11 h-11 md:w-14 md:h-14 ${handRaised ? "bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-500" : ""}`}
               onClick={raiseHand}
             >
               <Hand className="w-5 h-5" />
             </Button>
 
-            <div className="h-8 w-px bg-border mx-2" />
+            <div className="hidden md:block h-8 w-px bg-border mx-1" />
 
             <Button
               variant="destructive"
-              size="lg"
-              className="rounded-full px-6"
+              size="default"
+              className="rounded-full px-4 md:px-6 h-11 md:h-14"
               onClick={handleLeave}
             >
-              <PhoneOff className="w-5 h-5 mr-2" />
-              Leave
+              <PhoneOff className="w-5 h-5 md:mr-2" />
+              <span className="hidden md:inline">Leave</span>
             </Button>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* More options - hidden on mobile */}
+          <div className="hidden md:flex items-center min-w-[80px] justify-end">
             <Button variant="ghost" size="sm" className="rounded-full w-10 h-10">
-              <Settings className="w-4 h-4" />
+              <MoreVertical className="w-4 h-4" />
             </Button>
           </div>
         </div>
@@ -395,17 +587,59 @@ interface ParticipantVideoProps {
 
 function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
     }
+    
+    // Set up speaking detection for remote participant
+    if (stream && stream.getAudioTracks().length > 0) {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const audioContext = new AudioCtx();
+          const analyser = audioContext.createAnalyser();
+          const source = audioContext.createMediaStreamSource(stream);
+          source.connect(analyser);
+          analyser.fftSize = 256;
+          audioContextRef.current = audioContext;
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          
+          const checkAudioLevel = () => {
+            if (!audioContextRef.current || audioContextRef.current.state === 'closed') return;
+            analyser.getByteFrequencyData(dataArray);
+            const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            setIsSpeaking(average > 25);
+            animationFrameRef.current = requestAnimationFrame(checkAudioLevel);
+          };
+          checkAudioLevel();
+        }
+      } catch (e) {
+        console.error("Audio analyser error:", e);
+      }
+    }
+    
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+    };
   }, [stream]);
 
-  const hasVideo = stream && participant.can_video;
+  // Check if video track exists and is enabled
+  const hasVideo = stream && stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
 
   return (
-    <Card className="relative overflow-hidden bg-muted group hover:ring-2 hover:ring-accent transition-all">
+    <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] ${isSpeaking && !participant.is_muted ? 'ring-4 ring-green-500 ring-opacity-75' : ''}`}>
       {hasVideo ? (
         <video
           ref={videoRef}
@@ -414,29 +648,44 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
           className="w-full h-full object-cover"
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-accent/10 aspect-video">
-          <Avatar className="w-20 h-20">
+        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900 aspect-video">
+          <Avatar className="w-16 h-16 md:w-24 md:h-24">
             <AvatarImage src={participant.profile?.avatar_url} />
-            <AvatarFallback className="bg-accent/20 text-accent text-2xl">
+            <AvatarFallback className="bg-accent/30 text-accent text-xl md:text-3xl">
               {participant.profile?.full_name?.[0] || "?"}
             </AvatarFallback>
           </Avatar>
         </div>
       )}
-      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-        <div className="flex items-center gap-2 px-2 py-1 rounded bg-black/60 backdrop-blur-sm">
-          <span className="text-white text-sm font-medium">
+      
+      {/* Speaking indicator */}
+      {isSpeaking && !participant.is_muted && (
+        <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-full bg-green-500 text-white text-xs">
+          <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+          <span className="hidden sm:inline">Speaking</span>
+        </div>
+      )}
+
+      {/* Hand raised indicator */}
+      {participant.hand_raised && (
+        <div className="absolute top-2 right-2 bg-yellow-500 text-white rounded-full p-1.5 md:p-2 animate-bounce shadow-lg">
+          <Hand className="w-4 h-4 md:w-5 md:h-5" />
+        </div>
+      )}
+
+      {/* Name tag */}
+      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/70 backdrop-blur-sm">
+          <span className="text-white text-xs md:text-sm font-medium truncate max-w-[100px] md:max-w-[150px]">
             {participant.profile?.full_name || "Anonymous"}
           </span>
-          {participant.is_muted && <MicOff className="w-3 h-3 text-white" />}
+          {participant.is_muted ? (
+            <MicOff className="w-3 h-3 text-red-400 shrink-0" />
+          ) : (
+            <Mic className="w-3 h-3 text-green-400 shrink-0" />
+          )}
         </div>
       </div>
-      {/* Always show name tag */}
-      <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-black/60 backdrop-blur-sm group-hover:opacity-0 transition-opacity">
-        <span className="text-white text-sm font-medium">
-          {participant.profile?.full_name || "Anonymous"}
-        </span>
-      </div>
-    </Card>
+    </div>
   );
 }

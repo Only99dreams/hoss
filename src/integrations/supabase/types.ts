@@ -254,6 +254,7 @@ export type Database = {
         Row: {
           can_speak: boolean | null
           can_video: boolean | null
+          hand_raised: boolean | null
           id: string
           is_muted: boolean | null
           joined_at: string
@@ -264,6 +265,7 @@ export type Database = {
         Insert: {
           can_speak?: boolean | null
           can_video?: boolean | null
+          hand_raised?: boolean | null
           id?: string
           is_muted?: boolean | null
           joined_at?: string
@@ -274,6 +276,7 @@ export type Database = {
         Update: {
           can_speak?: boolean | null
           can_video?: boolean | null
+          hand_raised?: boolean | null
           id?: string
           is_muted?: boolean | null
           joined_at?: string

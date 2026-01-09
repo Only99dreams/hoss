@@ -143,6 +143,10 @@ export function usePrayerRoom(sessionId: string | null) {
         () => fetchParticipants()
       )
       .on("broadcast", { event: "webrtc-signal" }, handleWebRTCSignal)
+      .on("broadcast", { event: "hand-raised" }, (payload: any) => {
+        // Refetch participants to get updated hand_raised status
+        fetchParticipants();
+      })
       .subscribe();
   };
 
@@ -164,7 +168,7 @@ export function usePrayerRoom(sessionId: string | null) {
     }
   };
 
-  const createPeerConnection = (peerId: string): RTCPeerConnection => {
+  const createPeerConnection = (peerId: string, stream?: MediaStream | null): RTCPeerConnection => {
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
@@ -182,6 +186,7 @@ export function usePrayerRoom(sessionId: string | null) {
     };
 
     pc.ontrack = (event) => {
+      console.log("Received remote track from", peerId, event.track.kind);
       setRemoteStreams((prev) => {
         const newMap = new Map(prev);
         newMap.set(peerId, event.streams[0]);
@@ -189,9 +194,12 @@ export function usePrayerRoom(sessionId: string | null) {
       });
     };
 
-    if (localStream) {
-      localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
+    // Use provided stream or fall back to localStream state
+    const activeStream = stream || localStream;
+    if (activeStream) {
+      activeStream.getTracks().forEach((track) => {
+        console.log(`Adding ${track.kind} track to peer connection for ${peerId}`);
+        pc.addTrack(track, activeStream);
       });
     }
 
@@ -223,15 +231,62 @@ export function usePrayerRoom(sessionId: string | null) {
         throw new Error("Your browser doesn't support media devices. Please use a modern browser.");
       }
 
-      const constraints: MediaStreamConstraints = {
-        audio: withAudio ? { echoCancellation: true, noiseSuppression: true } : false,
-        video: withVideo ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } : false,
-      };
+      // Always request both audio and video so we have tracks to enable/disable later
+      // This ensures toggleMute and toggleVideo work properly
+      let stream: MediaStream;
+      
+      try {
+        // Try to get both audio and video
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+        });
+      } catch (bothErr) {
+        console.warn("Failed to get both audio and video, trying separately:", bothErr);
+        
+        // Try audio only
+        let audioStream: MediaStream | null = null;
+        let videoStream: MediaStream | null = null;
+        
+        try {
+          audioStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
+          });
+        } catch (audioErr) {
+          console.warn("No audio available:", audioErr);
+        }
+        
+        try {
+          videoStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
+          });
+        } catch (videoErr) {
+          console.warn("No video available:", videoErr);
+        }
+        
+        if (!audioStream && !videoStream) {
+          throw new Error("Could not access camera or microphone. Please check your device permissions.");
+        }
+        
+        // Combine available tracks into one stream
+        stream = new MediaStream();
+        if (audioStream) {
+          audioStream.getAudioTracks().forEach(track => stream.addTrack(track));
+        }
+        if (videoStream) {
+          videoStream.getVideoTracks().forEach(track => stream.addTrack(track));
+        }
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      stream.getAudioTracks().forEach((track) => (track.enabled = withAudio));
-      stream.getVideoTracks().forEach((track) => (track.enabled = withVideo));
+      // Set initial enabled state based on user preference
+      stream.getAudioTracks().forEach((track) => {
+        track.enabled = withAudio;
+        console.log(`Audio track ${track.label}: enabled=${track.enabled}`);
+      });
+      stream.getVideoTracks().forEach((track) => {
+        track.enabled = withVideo;
+        console.log(`Video track ${track.label}: enabled=${track.enabled}`);
+      });
 
       setLocalStream(stream);
       setIsMuted(!withAudio);
@@ -258,10 +313,10 @@ export function usePrayerRoom(sessionId: string | null) {
       setMyParticipation(data);
       setIsConnected(true);
 
-      // Connect to other participants
+      // Connect to other participants - pass stream directly since state hasn't updated yet
       participants.forEach((p) => {
         if (p.user_id !== user.id) {
-          initiateConnection(p.user_id);
+          initiateConnection(p.user_id, stream);
         }
       });
 
@@ -284,8 +339,8 @@ export function usePrayerRoom(sessionId: string | null) {
     }
   };
 
-  const initiateConnection = async (peerId: string) => {
-    const pc = createPeerConnection(peerId);
+  const initiateConnection = async (peerId: string, stream?: MediaStream | null) => {
+    const pc = createPeerConnection(peerId, stream);
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     broadcastSignal("offer", peerId, offer);
@@ -312,33 +367,76 @@ export function usePrayerRoom(sessionId: string | null) {
   };
 
   const toggleMute = async () => {
-    if (!localStream || !myParticipation) return;
+    if (!localStream) {
+      console.warn("Cannot toggle mute: no local stream");
+      return;
+    }
+    
+    const audioTracks = localStream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      toast({ title: "No microphone", description: "No microphone is available", variant: "destructive" });
+      return;
+    }
 
     const newMuted = !isMuted;
-    localStream.getAudioTracks().forEach((track) => (track.enabled = !newMuted));
+    audioTracks.forEach((track) => {
+      track.enabled = !newMuted;
+      console.log(`Audio track ${track.label}: enabled=${track.enabled}`);
+    });
     setIsMuted(newMuted);
 
-    await supabase
-      .from("prayer_participants")
-      .update({ is_muted: newMuted })
-      .eq("id", myParticipation.id);
+    if (myParticipation) {
+      await supabase
+        .from("prayer_participants")
+        .update({ is_muted: newMuted })
+        .eq("id", myParticipation.id);
+    }
   };
 
-  const toggleVideo = () => {
-    if (!localStream) return;
+  const toggleVideo = async () => {
+    if (!localStream) {
+      console.warn("Cannot toggle video: no local stream");
+      return;
+    }
+    
+    const videoTracks = localStream.getVideoTracks();
+    if (videoTracks.length === 0) {
+      toast({ title: "No camera", description: "No camera is available", variant: "destructive" });
+      return;
+    }
 
     const newVideoOn = !isVideoOn;
-    localStream.getVideoTracks().forEach((track) => (track.enabled = newVideoOn));
+    videoTracks.forEach((track) => {
+      track.enabled = newVideoOn;
+      console.log(`Video track ${track.label}: enabled=${track.enabled}`);
+    });
     setIsVideoOn(newVideoOn);
+
+    if (myParticipation) {
+      await supabase
+        .from("prayer_participants")
+        .update({ can_video: newVideoOn })
+        .eq("id", myParticipation.id);
+    }
   };
 
   const raiseHand = async () => {
-    setHandRaised(!handRaised);
-    // Broadcast hand raise status through channel
+    const newHandRaised = !handRaised;
+    setHandRaised(newHandRaised);
+    
+    // Update database so other participants can see
+    if (myParticipation) {
+      await supabase
+        .from("prayer_participants")
+        .update({ hand_raised: newHandRaised })
+        .eq("id", myParticipation.id);
+    }
+    
+    // Also broadcast for immediate notification
     channelRef.current?.send({
       type: "broadcast",
       event: "hand-raised",
-      payload: { userId: user?.id, raised: !handRaised },
+      payload: { userId: user?.id, raised: newHandRaised },
     });
   };
 
