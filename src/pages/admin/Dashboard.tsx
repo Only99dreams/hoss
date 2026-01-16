@@ -16,7 +16,7 @@ import {
   MessageSquare,
   Download,
 } from "lucide-react";
-import logo from "@/assets/logo.jpg";
+import logo from "@/assets/logo.png";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { UserManagement } from "@/components/admin/UserManagement";
