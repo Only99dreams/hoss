@@ -69,30 +69,10 @@ export function usePrayerRoom(sessionId: string | null) {
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
 
-  const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
+    const [profileError, setProfileError] = useState<string | null>(null);
+    const [profileLoading, setProfileLoading] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Fetch my profile
-  useEffect(() => {
-    if (!user) return;
-    
-    const fetchMyProfile = async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("full_name, avatar_url")
-        .eq("user_id", user.id)
-        .single();
-      
-      if (data) {
-        setMyProfile(data);
-      } else {
-        // If no profile, use email as fallback
-        setMyProfile({ full_name: user.email?.split("@")[0] || "User", avatar_url: null });
-      }
-    };
-    
-    fetchMyProfile();
-  }, [user]);
 
   // Fetch session and participants
   useEffect(() => {
@@ -136,15 +116,25 @@ export function usePrayerRoom(sessionId: string | null) {
     if (data) {
       // Fetch profiles for participants
       const userIds = data.map((p) => p.user_id);
-      const { data: profiles } = await supabase
+      const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("user_id, full_name, avatar_url")
         .in("user_id", userIds);
 
-      const participantsWithProfiles = data.map((p) => ({
-        ...p,
-        profile: profiles?.find((pr) => pr.user_id === p.user_id),
-      }));
+      if (profilesError) {
+        console.error("Error fetching participant profiles:", profilesError);
+      }
+
+      const participantsWithProfiles = data.map((p) => {
+        let profile = profiles?.find((pr) => pr.user_id === p.user_id);
+        if (!profile) {
+          // Fallback: use email prefix or placeholder
+          const fallbackName = p.email ? p.email.split("@")[0] : "User";
+          profile = { full_name: fallbackName, avatar_url: null };
+          console.warn(`Missing profile for user_id ${p.user_id}, using fallback name: ${fallbackName}`);
+        }
+        return { ...p, profile };
+      });
 
       setParticipants(participantsWithProfiles);
 
@@ -290,10 +280,16 @@ export function usePrayerRoom(sessionId: string | null) {
 
     // Use provided stream or fall back to localStream state
     const activeStream = stream || localStream;
-    if (activeStream) {
+    if (!activeStream) {
+      console.error(`No local stream available for peer connection with ${peerId}`);
+    } else {
       activeStream.getTracks().forEach((track) => {
-        console.log(`Adding ${track.kind} track to peer connection for ${peerId}`);
-        pc.addTrack(track, activeStream);
+        try {
+          console.log(`Adding ${track.kind} track to peer connection for ${peerId}`);
+          pc.addTrack(track, activeStream);
+        } catch (err) {
+          console.error(`Error adding ${track.kind} track to peer connection for ${peerId}:`, err);
+        }
       });
     }
 
