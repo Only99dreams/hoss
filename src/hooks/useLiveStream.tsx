@@ -48,6 +48,7 @@ export function useLiveStream() {
   
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -102,9 +103,20 @@ export function useLiveStream() {
       updateViewerCount();
     } else if (type === "answer" && pc) {
       await pc.setRemoteDescription(new RTCSessionDescription(signal));
+      const queued = pendingCandidatesRef.current.get(from);
+      if (queued && queued.length) {
+        for (const c of queued) {
+          await pc.addIceCandidate(new RTCIceCandidate(c));
+        }
+        pendingCandidatesRef.current.delete(from);
+      }
     } else if (type === "ice-candidate" && pc) {
       if (pc.remoteDescription) {
         await pc.addIceCandidate(new RTCIceCandidate(signal));
+      } else {
+        const arr = pendingCandidatesRef.current.get(from) || [];
+        arr.push(signal);
+        pendingCandidatesRef.current.set(from, arr);
       }
     }
   }, [user]);
@@ -332,6 +344,7 @@ export function useStreamViewer(streamId: string | null) {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const viewerId = useRef<string>(generateId());
+  const pendingViewerCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
 
   const handleBroadcasterSignal = useCallback(async (payload: any) => {
     const { type, from, to, signal } = payload.payload;
@@ -387,9 +400,17 @@ export function useStreamViewer(streamId: string | null) {
         event: "viewer-signal",
         payload: { type: "answer", from: viewerId.current, to: from, signal: answer }
       });
+      if (pendingViewerCandidatesRef.current.length) {
+        for (const c of pendingViewerCandidatesRef.current) {
+          await pc.addIceCandidate(new RTCIceCandidate(c));
+        }
+        pendingViewerCandidatesRef.current = [];
+      }
     } else if (type === "ice-candidate" && pc) {
       if (pc.remoteDescription) {
         await pc.addIceCandidate(new RTCIceCandidate(signal));
+      } else {
+        pendingViewerCandidatesRef.current.push(signal);
       }
     }
   }, []);

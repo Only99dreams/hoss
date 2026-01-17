@@ -198,6 +198,14 @@ export function StreamPlayer({
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
                 onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
               />
+              {isLive && isMuted && (
+                <div 
+                  className="absolute top-3 left-3 bg-black/60 text-white px-3 py-1 rounded-full text-xs cursor-pointer"
+                  onClick={toggleMute}
+                >
+                  Tap to unmute
+                </div>
+              )}
               
               {/* Play/Pause Overlay */}
               {!isPlaying && (

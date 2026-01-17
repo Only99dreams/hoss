@@ -182,8 +182,14 @@ export function usePrayerRoom(sessionId: string | null) {
       )
       .on("broadcast", { event: "webrtc-signal" }, handleWebRTCSignal)
       .on("broadcast", { event: "hand-raised" }, (payload: any) => {
-        // Refetch participants to get updated hand_raised status
-        fetchParticipants();
+        const { userId, raised } = payload.payload || {};
+        if (userId) {
+          setParticipants((prev) =>
+            prev.map((p) =>
+              p.user_id === userId ? { ...p, hand_raised: !!raised } : p
+            )
+          );
+        }
       })
       .on("broadcast", { event: "participant-ready" }, async (payload: any) => {
         // When a new participant announces they are ready, connect to them
@@ -527,6 +533,11 @@ export function usePrayerRoom(sessionId: string | null) {
   const raiseHand = async () => {
     const newHandRaised = !handRaised;
     setHandRaised(newHandRaised);
+    setParticipants((prev) =>
+      prev.map((p) =>
+        p.user_id === user?.id ? { ...p, hand_raised: newHandRaised } : p
+      )
+    );
     
     // Update database so other participants can see
     if (myParticipation) {
