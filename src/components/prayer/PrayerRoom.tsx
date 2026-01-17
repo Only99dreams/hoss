@@ -26,6 +26,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
     isMuted,
     isVideoOn,
     handRaised,
+    myProfile,
     joinSession,
     leaveSession,
     toggleMute,
@@ -233,7 +234,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
     if (!chatInput.trim()) return;
     const newMessage = {
       id: Date.now().toString(),
-      user: "You",
+      user: myProfile?.full_name || "You",
       message: chatInput,
       timestamp: new Date()
     };
@@ -274,7 +275,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
               <Avatar className="w-20 h-20 md:w-28 md:h-28">
                 <AvatarFallback className="bg-accent/20 text-accent text-2xl md:text-4xl">
-                  You
+                  {myProfile?.full_name?.[0]?.toUpperCase() || "U"}
                 </AvatarFallback>
               </Avatar>
             </div>
@@ -377,7 +378,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
                 <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900 aspect-video">
                   <Avatar className="w-16 h-16 md:w-24 md:h-24">
                     <AvatarFallback className="bg-accent/30 text-accent text-xl md:text-3xl">
-                      You
+                      {myProfile?.full_name?.[0]?.toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
                 </div>
@@ -401,11 +402,13 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
               {/* Name tag */}
               <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/70 backdrop-blur-sm">
-                  <span className="text-white text-xs md:text-sm font-medium">You</span>
+                  <span className="text-white text-xs md:text-sm font-medium truncate max-w-[100px] md:max-w-[150px]">
+                    {myProfile?.full_name || "You"}
+                  </span>
                   {isMuted ? (
-                    <MicOff className="w-3 h-3 text-red-400" />
+                    <MicOff className="w-3 h-3 text-red-400 shrink-0" />
                   ) : (
-                    <Mic className="w-3 h-3 text-green-400" />
+                    <Mic className="w-3 h-3 text-green-400 shrink-0" />
                   )}
                 </div>
               </div>
@@ -480,10 +483,12 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
                   {/* Self */}
                   <div className="flex items-center gap-3 p-2 rounded-lg bg-accent/5">
                     <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-accent/20 text-accent">You</AvatarFallback>
+                      <AvatarFallback className="bg-accent/20 text-accent">
+                        {myProfile?.full_name?.[0]?.toUpperCase() || "U"}
+                      </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">You</p>
+                      <p className="text-sm font-medium truncate">{myProfile?.full_name || "You"} (You)</p>
                     </div>
                     <div className="flex items-center gap-1">
                       {handRaised && <Hand className="w-4 h-4 text-yellow-500" />}

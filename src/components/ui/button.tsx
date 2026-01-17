@@ -5,21 +5,22 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 touch-action-manipulation tap-highlight-transparent active:scale-[0.98]",
   {
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow-md",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
+        outline: "border border-input bg-background hover:bg-accent/10 hover:text-accent-foreground hover:border-accent/50",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent/10 hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        gold: "bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm hover:shadow-md font-semibold",
-        hero: "bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg hover:shadow-xl font-semibold text-base",
+        gold: "bg-gradient-to-r from-accent to-[hsl(42,80%,65%)] text-accent-foreground hover:from-accent/90 hover:to-[hsl(42,80%,60%)] shadow-md hover:shadow-lg font-semibold",
+        hero: "bg-gradient-to-r from-accent to-[hsl(42,80%,65%)] text-accent-foreground hover:from-accent/90 hover:to-[hsl(42,80%,60%)] shadow-lg hover:shadow-xl font-semibold text-base",
         "hero-outline": "border-2 border-primary-foreground/30 text-primary-foreground bg-transparent hover:bg-primary-foreground/10 font-semibold text-base backdrop-blur-sm",
         glass: "bg-background/80 backdrop-blur-lg text-foreground border border-border/50 hover:bg-background/90 shadow-sm",
-        live: "bg-destructive text-destructive-foreground hover:bg-destructive/90 animate-pulse",
+        live: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md",
+        success: "bg-green-600 text-white hover:bg-green-700 shadow-sm",
       },
       size: {
         default: "h-10 px-4 py-2",

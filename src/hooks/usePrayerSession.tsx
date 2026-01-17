@@ -61,6 +61,7 @@ export function usePrayerRoom(sessionId: string | null) {
   const [participants, setParticipants] = useState<ParticipantWithProfile[]>([]);
   const [session, setSession] = useState<PrayerSession | null>(null);
   const [myParticipation, setMyParticipation] = useState<PrayerParticipant | null>(null);
+  const [myProfile, setMyProfile] = useState<{ full_name: string; avatar_url: string | null } | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -70,6 +71,28 @@ export function usePrayerRoom(sessionId: string | null) {
 
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // Fetch my profile
+  useEffect(() => {
+    if (!user) return;
+    
+    const fetchMyProfile = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("user_id", user.id)
+        .single();
+      
+      if (data) {
+        setMyProfile(data);
+      } else {
+        // If no profile, use email as fallback
+        setMyProfile({ full_name: user.email?.split("@")[0] || "User", avatar_url: null });
+      }
+    };
+    
+    fetchMyProfile();
+  }, [user]);
 
   // Fetch session and participants
   useEffect(() => {
@@ -140,35 +163,86 @@ export function usePrayerRoom(sessionId: string | null) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "prayer_participants", filter: `session_id=eq.${sessionId}` },
-        () => fetchParticipants()
+        async (payload: any) => {
+          console.log("Participant change:", payload);
+          await fetchParticipants();
+          
+          // When a new participant joins, establish connection with them
+          if (payload.eventType === "INSERT" && isConnected && localStream) {
+            const newParticipant = payload.new;
+            if (newParticipant.user_id !== user?.id && !newParticipant.left_at) {
+              console.log("New participant joined, initiating connection:", newParticipant.user_id);
+              // Small delay to let them set up their stream
+              setTimeout(() => {
+                initiateConnection(newParticipant.user_id, localStream);
+              }, 1000);
+            }
+          }
+        }
       )
       .on("broadcast", { event: "webrtc-signal" }, handleWebRTCSignal)
       .on("broadcast", { event: "hand-raised" }, (payload: any) => {
         // Refetch participants to get updated hand_raised status
         fetchParticipants();
       })
+      .on("broadcast", { event: "participant-ready" }, async (payload: any) => {
+        // When a new participant announces they are ready, connect to them
+        const { userId } = payload.payload;
+        if (userId !== user?.id && isConnected && localStream) {
+          console.log("Participant ready, initiating connection:", userId);
+          initiateConnection(userId, localStream);
+        }
+      })
       .subscribe();
   };
 
   const handleWebRTCSignal = async (payload: any) => {
-    const { type, from, signal } = payload.payload;
+    const { type, from, to, signal } = payload.payload;
+    // Only process signals meant for us or broadcast signals
     if (from === user?.id) return;
+    if (to && to !== user?.id) return; // Ignore signals not meant for us
 
-    const pc = peerConnections.current.get(from) || createPeerConnection(from);
+    console.log(`WebRTC signal received: type=${type}, from=${from}`);
 
-    if (type === "offer") {
-      await pc.setRemoteDescription(new RTCSessionDescription(signal));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      broadcastSignal("answer", from, answer);
-    } else if (type === "answer") {
-      await pc.setRemoteDescription(new RTCSessionDescription(signal));
-    } else if (type === "ice-candidate") {
-      await pc.addIceCandidate(new RTCIceCandidate(signal));
+    try {
+      let pc = peerConnections.current.get(from);
+      
+      if (type === "offer") {
+        // Create new connection if we don't have one
+        if (!pc) {
+          pc = createPeerConnection(from, localStream);
+        }
+        await pc.setRemoteDescription(new RTCSessionDescription(signal));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        broadcastSignal("answer", from, answer);
+        console.log(`Sent answer to ${from}`);
+      } else if (type === "answer") {
+        if (pc && pc.signalingState === "have-local-offer") {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          console.log(`Set remote answer from ${from}`);
+        }
+      } else if (type === "ice-candidate") {
+        if (pc && pc.remoteDescription) {
+          await pc.addIceCandidate(new RTCIceCandidate(signal));
+          console.log(`Added ICE candidate from ${from}`);
+        } else {
+          console.log(`Queuing ICE candidate from ${from} - no remote description yet`);
+        }
+      }
+    } catch (error) {
+      console.error(`Error handling WebRTC signal from ${from}:`, error);
     }
   };
 
   const createPeerConnection = (peerId: string, stream?: MediaStream | null): RTCPeerConnection => {
+    // Close existing connection if any
+    const existingPc = peerConnections.current.get(peerId);
+    if (existingPc) {
+      existingPc.close();
+      peerConnections.current.delete(peerId);
+    }
+
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
@@ -176,22 +250,42 @@ export function usePrayerRoom(sessionId: string | null) {
         { urls: "stun:stun2.l.google.com:19302" },
         { urls: "stun:stun3.l.google.com:19302" },
         { urls: "stun:stun4.l.google.com:19302" },
+        // Add TURN servers for better connectivity
+        { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
       ],
+      iceCandidatePoolSize: 10,
     });
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log(`Sending ICE candidate to ${peerId}`);
         broadcastSignal("ice-candidate", peerId, event.candidate);
       }
     };
 
+    pc.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state with ${peerId}: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        // Try to reconnect
+        console.log(`Connection with ${peerId} ${pc.iceConnectionState}, may need reconnection`);
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`Connection state with ${peerId}: ${pc.connectionState}`);
+    };
+
     pc.ontrack = (event) => {
-      console.log("Received remote track from", peerId, event.track.kind);
-      setRemoteStreams((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(peerId, event.streams[0]);
-        return newMap;
-      });
+      console.log("Received remote track from", peerId, event.track.kind, "enabled:", event.track.enabled);
+      const remoteStream = event.streams[0];
+      if (remoteStream) {
+        setRemoteStreams((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(peerId, remoteStream);
+          return newMap;
+        });
+      }
     };
 
     // Use provided stream or fall back to localStream state
@@ -315,10 +409,20 @@ export function usePrayerRoom(sessionId: string | null) {
 
       // Connect to other participants - pass stream directly since state hasn't updated yet
       participants.forEach((p) => {
-        if (p.user_id !== user.id) {
+        if (p.user_id !== user.id && !p.left_at) {
+          console.log("Initiating connection to existing participant:", p.user_id);
           initiateConnection(p.user_id, stream);
         }
       });
+
+      // Announce that we're ready so other participants can connect to us
+      setTimeout(() => {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "participant-ready",
+          payload: { userId: user.id },
+        });
+      }, 500);
 
       toast({ title: "Joined", description: "You've joined the prayer session" });
     } catch (error: any) {
@@ -444,6 +548,7 @@ export function usePrayerRoom(sessionId: string | null) {
     session,
     participants,
     myParticipation,
+    myProfile,
     localStream,
     remoteStreams,
     isConnected,

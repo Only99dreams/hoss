@@ -16,8 +16,10 @@ import {
   ThumbsUp,
   Share2,
   MoreHorizontal,
-  Users
+  Users,
+  Loader2
 } from "lucide-react";
+import { useStreamViewer } from "@/hooks/useLiveStream";
 
 interface StreamPlayerProps {
   stream?: MediaStream | null;
@@ -27,6 +29,7 @@ interface StreamPlayerProps {
   viewerCount?: number;
   description?: string;
   channelName?: string;
+  streamId?: string | null;
 }
 
 // Helper to convert YouTube URL to embed format
@@ -61,7 +64,8 @@ export function StreamPlayer({
   title, 
   viewerCount = 0,
   description,
-  channelName = "Home of Super Stars"
+  channelName = "Home of Super Stars",
+  streamId
 }: StreamPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,12 +78,27 @@ export function StreamPlayer({
   const [duration, setDuration] = useState(0);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Use the viewer hook for WebRTC streams (when streamId is provided and no external URL)
+  const { remoteStream, isConnected, isConnecting, connect } = useStreamViewer(
+    (streamId && !externalUrl) ? streamId : null
+  );
+
+  // Auto-connect when streamId is available and it's a WebRTC stream
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
+    if (streamId && !externalUrl && isLive) {
+      connect();
+    }
+  }, [streamId, externalUrl, isLive, connect]);
+
+  // Use remote stream from WebRTC or passed stream
+  const activeStream = remoteStream || stream;
+
+  useEffect(() => {
+    if (videoRef.current && activeStream) {
+      videoRef.current.srcObject = activeStream;
       videoRef.current.play().catch(console.error);
     }
-  }, [stream]);
+  }, [activeStream]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -167,7 +186,7 @@ export function StreamPlayer({
               allowFullScreen
               title={title || "Live Stream"}
             />
-          ) : stream ? (
+          ) : activeStream ? (
             <>
               <video
                 ref={videoRef}
@@ -271,13 +290,21 @@ export function StreamPlayer({
                 </div>
               </div>
             </>
-          ) : (
+          ) : isConnecting ? (
             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-900 to-black">
               <div className="text-center text-white">
+                <Loader2 className="w-16 h-16 mx-auto mb-4 animate-spin text-accent" />
+                <p className="text-xl font-medium">Connecting to stream...</p>
+                <p className="text-sm text-gray-400 mt-1">Please wait while we establish the connection</p>
+              </div>
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-900 to-black">
+              <div className="text-center text-white px-4">
                 <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
                   <Play className="w-10 h-10" />
                 </div>
-                <p className="text-xl font-medium">No stream available</p>
+                <p className="text-lg md:text-xl font-medium">No stream available</p>
                 <p className="text-sm text-gray-400 mt-1">Waiting for broadcast to start...</p>
               </div>
             </div>
@@ -304,20 +331,20 @@ export function StreamPlayer({
       </div>
 
       {/* Video Info Section - YouTube Style */}
-      <div className="space-y-3">
+      <div className="space-y-3 px-1">
         {/* Title */}
-        <h1 className="text-xl font-semibold text-foreground line-clamp-2">
+        <h1 className="text-lg md:text-xl font-semibold text-foreground line-clamp-2">
           {title || "Live Stream"}
         </h1>
         
         {/* Channel Info & Actions */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 md:gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold shrink-0">
               {channelName.charAt(0)}
             </div>
-            <div>
-              <p className="font-medium text-foreground">{channelName}</p>
+            <div className="min-w-0">
+              <p className="font-medium text-foreground truncate">{channelName}</p>
               {viewerCount > 0 && (
                 <p className="text-sm text-muted-foreground">
                   {viewerCount.toLocaleString()} {isLive ? "watching now" : "views"}
@@ -327,16 +354,16 @@ export function StreamPlayer({
           </div>
           
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" className="rounded-full">
-              <ThumbsUp className="w-4 h-4 mr-2" />
-              Like
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
+            <Button variant="outline" size="sm" className="rounded-full shrink-0 h-9">
+              <ThumbsUp className="w-4 h-4 mr-1.5" />
+              <span className="hidden sm:inline">Like</span>
             </Button>
-            <Button variant="outline" size="sm" className="rounded-full">
-              <Share2 className="w-4 h-4 mr-2" />
-              Share
+            <Button variant="outline" size="sm" className="rounded-full shrink-0 h-9">
+              <Share2 className="w-4 h-4 mr-1.5" />
+              <span className="hidden sm:inline">Share</span>
             </Button>
-            <Button variant="outline" size="icon" className="rounded-full h-8 w-8">
+            <Button variant="outline" size="icon" className="rounded-full h-9 w-9 shrink-0">
               <MoreHorizontal className="w-4 h-4" />
             </Button>
           </div>

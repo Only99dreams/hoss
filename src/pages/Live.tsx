@@ -137,6 +137,7 @@ const Live = () => {
             <div className="lg:col-span-2">
               {selectedStream ? (
                 <StreamPlayer
+                  streamId={selectedStream.id}
                   externalUrl={selectedStream.external_stream_url}
                   isLive={selectedStream.status === "live"}
                   title={selectedStream.title}
@@ -147,6 +148,7 @@ const Live = () => {
                 <Skeleton className="aspect-video w-full rounded-xl" />
               ) : liveStreams.length > 0 ? (
                 <StreamPlayer
+                  streamId={liveStreams[0].id}
                   externalUrl={liveStreams[0].external_stream_url}
                   isLive={true}
                   title={liveStreams[0].title}
@@ -154,10 +156,10 @@ const Live = () => {
                 />
               ) : (
                 <Card className="aspect-video bg-gradient-to-br from-gray-900 to-black rounded-xl overflow-hidden">
-                  <CardContent className="h-full flex flex-col items-center justify-center text-white">
-                    <Radio className="w-16 h-16 mb-4 opacity-50" />
-                    <h3 className="text-xl font-semibold mb-2">No Live Stream</h3>
-                    <p className="text-gray-400 text-center max-w-md">
+                  <CardContent className="h-full flex flex-col items-center justify-center text-white p-4">
+                    <Radio className="w-12 h-12 md:w-16 md:h-16 mb-3 md:mb-4 opacity-50" />
+                    <h3 className="text-lg md:text-xl font-semibold mb-2 text-center">No Live Stream</h3>
+                    <p className="text-gray-400 text-center text-sm md:text-base max-w-md px-4">
                       There are no active live streams right now. Check back during our scheduled service times or browse recordings below.
                     </p>
                   </CardContent>
@@ -167,15 +169,15 @@ const Live = () => {
               {/* Sign in prompt for guests */}
               {!user && (
                 <Card className="mt-4 border-accent/30 bg-accent/5">
-                  <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <LogIn className="w-5 h-5 text-accent" />
+                  <CardContent className="p-3 md:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 md:gap-4">
+                    <div className="flex items-center gap-3 text-center sm:text-left">
+                      <LogIn className="w-5 h-5 text-accent hidden sm:block" />
                       <div>
-                        <p className="font-medium">Want to interact with the stream?</p>
-                        <p className="text-sm text-muted-foreground">Sign in to like, comment, and participate in live chat</p>
+                        <p className="font-medium text-sm md:text-base">Want to interact with the stream?</p>
+                        <p className="text-xs md:text-sm text-muted-foreground">Sign in to like, comment, and participate in live chat</p>
                       </div>
                     </div>
-                    <Button onClick={() => navigate("/auth")} className="bg-accent text-accent-foreground hover:bg-accent/90">
+                    <Button onClick={() => navigate("/auth")} className="bg-accent text-accent-foreground hover:bg-accent/90 w-full sm:w-auto">
                       Sign In
                     </Button>
                   </CardContent>

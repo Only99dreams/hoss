@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import "webrtc-adapter";
 
 // Fallback UUID for older mobile browsers that lack crypto.randomUUID
@@ -16,6 +17,14 @@ const generateId = () => {
   });
 };
 
+const ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+];
+
 interface StreamState {
   isStreaming: boolean;
   isRecording: boolean;
@@ -27,6 +36,7 @@ interface StreamState {
 
 export function useLiveStream() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [state, setState] = useState<StreamState>({
     isStreaming: false,
     isRecording: false,
@@ -40,6 +50,68 @@ export function useLiveStream() {
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // Handle WebRTC signaling for broadcaster
+  const handleViewerSignal = useCallback(async (payload: any) => {
+    const { type, from, signal } = payload.payload;
+    if (!localStreamRef.current) return;
+    
+    console.log(`Broadcaster received ${type} signal from viewer ${from}`);
+    
+    let pc = peerConnectionsRef.current.get(from);
+    
+    if (type === "viewer-join") {
+      // New viewer wants to connect
+      pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 });
+      peerConnectionsRef.current.set(from, pc);
+      
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          channelRef.current?.send({
+            type: "broadcast",
+            event: "stream-signal",
+            payload: { type: "ice-candidate", from: user?.id, to: from, signal: event.candidate }
+          });
+        }
+      };
+      
+      pc.onconnectionstatechange = () => {
+        console.log(`Broadcaster connection state with ${from}: ${pc?.connectionState}`);
+        if (pc?.connectionState === "disconnected" || pc?.connectionState === "failed") {
+          peerConnectionsRef.current.delete(from);
+          pc?.close();
+          updateViewerCount();
+        }
+      };
+      
+      // Add local stream tracks
+      localStreamRef.current.getTracks().forEach(track => {
+        pc!.addTrack(track, localStreamRef.current!);
+      });
+      
+      // Create and send offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "stream-signal",
+        payload: { type: "offer", from: user?.id, to: from, signal: offer }
+      });
+      
+      updateViewerCount();
+    } else if (type === "answer" && pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(signal));
+    } else if (type === "ice-candidate" && pc) {
+      if (pc.remoteDescription) {
+        await pc.addIceCandidate(new RTCIceCandidate(signal));
+      }
+    }
+  }, [user]);
+
+  const updateViewerCount = useCallback(() => {
+    setState(prev => ({ ...prev, viewerCount: peerConnectionsRef.current.size }));
+  }, []);
 
   const startStream = useCallback(async (title: string, description?: string, externalUrl?: string) => {
     try {
@@ -49,8 +121,8 @@ export function useLiveStream() {
       // Only get user media if not using external source
       if (!externalUrl) {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
-          audio: true,
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         });
         localStreamRef.current = stream;
       }
@@ -65,11 +137,20 @@ export function useLiveStream() {
           started_at: new Date().toISOString(),
           stream_key: generatedStreamKey,
           external_stream_url: externalUrl || null,
+          created_by: user?.id,
         })
         .select()
         .single();
 
       if (error) throw error;
+
+      // Set up signaling channel for WebRTC (only for camera streams)
+      if (!externalUrl && stream) {
+        channelRef.current = supabase
+          .channel(`live-stream-${streamData.id}`)
+          .on("broadcast", { event: "viewer-signal" }, handleViewerSignal)
+          .subscribe();
+      }
 
       setState(prev => ({
         ...prev,
@@ -94,10 +175,16 @@ export function useLiveStream() {
       });
       throw error;
     }
-  }, [toast]);
+  }, [toast, user, handleViewerSignal]);
 
   const stopStream = useCallback(async (saveRecording: boolean = false) => {
     try {
+      // Clean up signaling channel
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+
       // Stop local stream
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -233,5 +320,129 @@ export function useLiveStream() {
     startRecording,
     stopRecording,
     getRecordedBlob,
+  };
+}
+
+// Hook for viewers to watch a live stream
+export function useStreamViewer(streamId: string | null) {
+  const { user } = useAuth();
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const viewerId = useRef<string>(generateId());
+
+  const handleBroadcasterSignal = useCallback(async (payload: any) => {
+    const { type, from, to, signal } = payload.payload;
+    
+    // Only process signals meant for us
+    if (to && to !== viewerId.current) return;
+    
+    console.log(`Viewer received ${type} signal from broadcaster`);
+    
+    let pc = peerConnectionRef.current;
+    
+    if (type === "offer") {
+      // Broadcaster is sending offer
+      if (!pc) {
+        pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 });
+        peerConnectionRef.current = pc;
+        
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            channelRef.current?.send({
+              type: "broadcast",
+              event: "viewer-signal",
+              payload: { type: "ice-candidate", from: viewerId.current, to: from, signal: event.candidate }
+            });
+          }
+        };
+        
+        pc.ontrack = (event) => {
+          console.log("Viewer received track:", event.track.kind);
+          setRemoteStream(event.streams[0]);
+          setIsConnected(true);
+          setIsConnecting(false);
+        };
+        
+        pc.onconnectionstatechange = () => {
+          console.log(`Viewer connection state: ${pc?.connectionState}`);
+          if (pc?.connectionState === "connected") {
+            setIsConnected(true);
+            setIsConnecting(false);
+          } else if (pc?.connectionState === "disconnected" || pc?.connectionState === "failed") {
+            setIsConnected(false);
+            setRemoteStream(null);
+          }
+        };
+      }
+      
+      await pc.setRemoteDescription(new RTCSessionDescription(signal));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "viewer-signal",
+        payload: { type: "answer", from: viewerId.current, to: from, signal: answer }
+      });
+    } else if (type === "ice-candidate" && pc) {
+      if (pc.remoteDescription) {
+        await pc.addIceCandidate(new RTCIceCandidate(signal));
+      }
+    }
+  }, []);
+
+  const connect = useCallback(() => {
+    if (!streamId || isConnecting || isConnected) return;
+    
+    setIsConnecting(true);
+    
+    // Set up signaling channel
+    channelRef.current = supabase
+      .channel(`live-stream-${streamId}`)
+      .on("broadcast", { event: "stream-signal" }, handleBroadcasterSignal)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          // Announce to broadcaster that we want to join
+          channelRef.current?.send({
+            type: "broadcast",
+            event: "viewer-signal",
+            payload: { type: "viewer-join", from: viewerId.current }
+          });
+        }
+      });
+  }, [streamId, isConnecting, isConnected, handleBroadcasterSignal]);
+
+  const disconnect = useCallback(() => {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+    
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    
+    setRemoteStream(null);
+    setIsConnected(false);
+    setIsConnecting(false);
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      disconnect();
+    };
+  }, [disconnect]);
+
+  return {
+    remoteStream,
+    isConnected,
+    isConnecting,
+    connect,
+    disconnect,
   };
 }

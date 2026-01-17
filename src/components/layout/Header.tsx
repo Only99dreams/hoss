@@ -129,91 +129,95 @@ export function Header() {
           )}
         </div>
 
-        {/* Mobile Navigation */}
-        <Sheet open={isOpen} onOpenChange={setIsOpen}>
-          <SheetTrigger asChild className="md:hidden">
-            <Button variant="ghost" size="icon">
-              <Menu className="h-6 w-6" />
-              <span className="sr-only">Toggle menu</span>
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="w-[300px] sm:w-[350px]">
-            <div className="flex flex-col gap-6 pt-6">
-              <div className="flex items-center">
-                <img src={logo} alt="Home of Super Stars" className="w-12 h-12 rounded-full object-cover" />
+        {/* Mobile Right Actions */}
+        <div className="flex items-center gap-2 md:hidden">
+          {user && <NotificationCenter />}
+          <Sheet open={isOpen} onOpenChange={setIsOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="tap-highlight-transparent">
+                <Menu className="h-6 w-6" />
+                <span className="sr-only">Toggle menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[85vw] max-w-[350px] safe-top">
+              <div className="flex flex-col gap-6 pt-6 h-full">
+                <div className="flex items-center gap-3">
+                  <img src={logo} alt="Home of Super Stars" className="w-12 h-12 rounded-full object-cover" />
+                  <span className="font-serif font-semibold">Home of Super Stars</span>
+                </div>
+
+                <nav className="flex flex-col gap-1 flex-1 overflow-y-auto scroll-smooth-ios">
+                  {navigation.map((item) => (
+                    <Button
+                      key={item.name}
+                      asChild
+                      variant={isActive(item.href) ? "default" : "ghost"}
+                      className={`w-full justify-start h-12 ${
+                        isActive(item.href) ? "bg-accent text-accent-foreground" : ""
+                      }`}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <Link to={item.href} className="inline-flex items-center">
+                        {item.icon && <item.icon className="w-5 h-5 mr-3" />}
+                        {item.name}
+                      </Link>
+                    </Button>
+                  ))}
+                </nav>
+
+                <div className="flex flex-col gap-2 pt-4 border-t border-border safe-bottom">
+                  {user ? (
+                    <>
+                      <div className="flex items-center gap-3 px-2 py-2 bg-muted/50 rounded-lg">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="bg-primary text-primary-foreground">
+                            {getInitials(user.email || "U")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm truncate flex-1">{user.email}</span>
+                      </div>
+                      <Button asChild variant="outline" className="w-full h-12" onClick={() => setIsOpen(false)}>
+                        <Link to="/dashboard">
+                          <LayoutDashboard className="w-5 h-5 mr-3" />
+                          Dashboard
+                        </Link>
+                      </Button>
+                      {isAdmin && (
+                        <Button asChild variant="outline" className="w-full h-12" onClick={() => setIsOpen(false)}>
+                          <Link to="/admin">
+                            <Settings className="w-5 h-5 mr-3" />
+                            Admin Panel
+                          </Link>
+                        </Button>
+                      )}
+                      <Button 
+                        variant="destructive" 
+                        className="w-full h-12" 
+                        onClick={() => { handleSignOut(); setIsOpen(false); }}
+                      >
+                        <LogOut className="w-5 h-5 mr-3" />
+                        Sign Out
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button asChild variant="outline" className="w-full h-12" onClick={() => setIsOpen(false)}>
+                        <Link to="/auth">Sign In</Link>
+                      </Button>
+                      <Button
+                        asChild
+                        className="w-full h-12 bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
+                        onClick={() => setIsOpen(false)}
+                      >
+                        <Link to="/auth?register=true">Join Us</Link>
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
-
-               <nav className="flex flex-col gap-2">
-                 {navigation.map((item) => (
-                   <Button
-                     key={item.name}
-                     asChild
-                     variant={isActive(item.href) ? "default" : "ghost"}
-                     className={`w-full justify-start ${
-                       isActive(item.href) ? "bg-accent text-accent-foreground" : ""
-                     }`}
-                     onClick={() => setIsOpen(false)}
-                   >
-                     <Link to={item.href} className="inline-flex items-center">
-                       {item.icon && <item.icon className="w-4 h-4 mr-2" />}
-                       {item.name}
-                     </Link>
-                   </Button>
-                 ))}
-               </nav>
-
-               <div className="flex flex-col gap-2 pt-4 border-t border-border">
-                 {user ? (
-                   <>
-                     <div className="flex items-center gap-2 px-2 py-1">
-                       <Avatar className="h-8 w-8">
-                         <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                           {getInitials(user.email || "U")}
-                         </AvatarFallback>
-                       </Avatar>
-                       <span className="text-sm truncate">{user.email}</span>
-                     </div>
-                     <Button asChild variant="outline" className="w-full" onClick={() => setIsOpen(false)}>
-                       <Link to="/dashboard">
-                         <LayoutDashboard className="w-4 h-4 mr-2" />
-                         Dashboard
-                       </Link>
-                     </Button>
-                     {isAdmin && (
-                       <Button asChild variant="outline" className="w-full" onClick={() => setIsOpen(false)}>
-                         <Link to="/admin">
-                           <Settings className="w-4 h-4 mr-2" />
-                           Admin Panel
-                         </Link>
-                       </Button>
-                     )}
-                     <Button 
-                       variant="destructive" 
-                       className="w-full" 
-                       onClick={() => { handleSignOut(); setIsOpen(false); }}
-                     >
-                       <LogOut className="w-4 h-4 mr-2" />
-                       Sign Out
-                     </Button>
-                   </>
-                 ) : (
-                   <>
-                     <Button asChild variant="outline" className="w-full" onClick={() => setIsOpen(false)}>
-                       <Link to="/auth">Sign In</Link>
-                     </Button>
-                     <Button
-                       asChild
-                       className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
-                       onClick={() => setIsOpen(false)}
-                     >
-                       <Link to="/auth?register=true">Join Us</Link>
-                     </Button>
-                   </>
-                 )}
-               </div>
-            </div>
-          </SheetContent>
-        </Sheet>
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
     </header>
   );

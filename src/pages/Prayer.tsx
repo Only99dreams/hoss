@@ -80,27 +80,27 @@ const Prayer = () => {
   return (
     <Layout>
       {/* Hero Section */}
-      <section className="relative py-12 md:py-20 gradient-hero overflow-hidden">
+      <section className="relative py-8 md:py-20 gradient-hero overflow-hidden">
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute bottom-10 right-10 w-72 h-72 rounded-full bg-accent blur-3xl animate-float" />
+          <div className="absolute bottom-10 right-10 w-48 md:w-72 h-48 md:h-72 rounded-full bg-accent blur-3xl animate-float" />
         </div>
-        <div className="container relative z-10 text-center">
-          <Badge variant="outline" className="border-primary-foreground/30 text-primary-foreground mb-4">
+        <div className="container relative z-10 text-center px-4">
+          <Badge variant="outline" className="border-primary-foreground/30 text-primary-foreground mb-3 md:mb-4">
             <Heart className="w-3 h-3 mr-1" />
             Prayer Ministry
           </Badge>
-          <h1 className="text-4xl md:text-5xl font-serif font-bold text-primary-foreground mb-4">
+          <h1 className="text-3xl md:text-5xl font-serif font-bold text-primary-foreground mb-3 md:mb-4">
             Join in Prayer
           </h1>
-          <p className="text-primary-foreground/80 max-w-2xl mx-auto mb-8">
+          <p className="text-primary-foreground/80 max-w-2xl mx-auto mb-6 md:mb-8 text-sm md:text-base px-2">
             Connect with believers worldwide in powerful prayer sessions. Speak, listen, or simply be present as we lift our voices together.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="hero" size="lg" onClick={() => liveSessions[0] && handleJoinSession(liveSessions[0])}>
+          <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center">
+            <Button variant="hero" size="lg" className="w-full sm:w-auto" onClick={() => liveSessions[0] && handleJoinSession(liveSessions[0])}>
               <Heart className="w-5 h-5" />
               Join Live Prayer
             </Button>
-            <Button variant="hero-outline" size="lg">
+            <Button variant="hero-outline" size="lg" className="w-full sm:w-auto">
               Submit Prayer Request
             </Button>
           </div>
@@ -108,11 +108,11 @@ const Prayer = () => {
       </section>
 
       {/* Live Sessions */}
-      <section className="py-12 md:py-16">
-        <div className="container">
+      <section className="py-8 md:py-16">
+        <div className="container px-4">
           {/* Sign in prompt for guests */}
           {!user && (
-            <Card className="mb-8 border-accent/30 bg-accent/5">
+            <Card className="mb-6 md:mb-8 border-accent/30 bg-accent/5">
               <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <Lock className="w-5 h-5 text-accent" />
