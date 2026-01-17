@@ -73,27 +73,6 @@ export function usePrayerRoom(sessionId: string | null) {
     const [profileLoading, setProfileLoading] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Fetch my profile
-  useEffect(() => {
-    if (!user) return;
-    
-    const fetchMyProfile = async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("full_name, avatar_url")
-        .eq("user_id", user.id)
-        .single();
-      
-      if (data) {
-        setMyProfile(data);
-      } else {
-        // If no profile, use email as fallback
-        setMyProfile({ full_name: user.email?.split("@")[0] || "User", avatar_url: null });
-      }
-    };
-    
-    fetchMyProfile();
-  }, [user]);
 
   // Fetch session and participants
   useEffect(() => {
