@@ -343,7 +343,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
             variant="ghost" 
             size="sm"
             onClick={() => { setShowParticipants(!showParticipants); setShowChat(false); }}
-            className="relative px-2 md:px-3"
+            className={`relative px-2 md:px-3 ${showParticipants ? "bg-accent/10" : ""}`}
           >
             <Users className="w-4 h-4" />
             <span className="ml-1 text-xs">{totalParticipants}</span>
@@ -362,10 +362,10 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Video Grid */}
-        <div className={`flex-1 p-2 md:p-4 overflow-y-auto transition-all ${(showChat || showParticipants) ? 'hidden md:block md:mr-80' : ''}`}>
-          <div className={`grid gap-2 md:gap-3 h-full auto-rows-fr ${getGridClass(totalParticipants)}`}>
+        <div className={`flex-1 p-2 md:p-6 overflow-y-auto transition-all ${(showChat || showParticipants) ? 'hidden md:block md:mr-80' : ''}`}>
+          <div className={`grid gap-2 md:gap-4 lg:gap-5 h-full auto-rows-fr ${getGridClass(totalParticipants)}`}>
             {/* Local Video */}
-            <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:aspect-square ${isSpeaking && !isMuted ? 'speaking-ring' : ''}`}>
+            <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:min-h-[220px] md:aspect-square ${isSpeaking && !isMuted ? 'speaking-ring' : ''}`}>
               {/* Always render video element, control visibility with CSS */}
               <video
                 ref={localVideoRef}
@@ -410,7 +410,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
               {/* Name tag */}
               <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/70 backdrop-blur-sm">
-                  <span className="text-white text-xs md:text-sm font-medium truncate max-w-[100px] md:max-w-[150px]">
+                  <span className="text-white text-xs md:text-sm font-medium truncate max-w-[100px] md:max-w-[200px]">
                     {myProfile?.full_name || "You"}
                   </span>
                   {isMuted ? (
@@ -653,7 +653,7 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
   const hasVideo = stream && stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
 
   return (
-    <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:aspect-square ${isSpeaking && !participant.is_muted ? 'speaking-ring' : ''}`}>
+    <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:min-h-[220px] md:aspect-square ${isSpeaking && !participant.is_muted ? 'speaking-ring' : ''}`}>
       {hasVideo ? (
         <video
           ref={videoRef}
@@ -696,7 +696,7 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
       {/* Name tag */}
       <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/70 backdrop-blur-sm">
-          <span className="text-white text-xs md:text-sm font-medium truncate max-w-[100px] md:max-w-[150px]">
+          <span className="text-white text-xs md:text-sm font-medium truncate max-w-[100px] md:max-w-[200px]">
             {participant.profile?.full_name || "Anonymous"}
           </span>
           {participant.is_muted ? (
