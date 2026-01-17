@@ -162,6 +162,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
       setPreviewStream(stream);
       if (previewVideoRef.current) {
         previewVideoRef.current.srcObject = stream;
+        previewVideoRef.current.play().catch(() => {});
       }
     } catch (error: any) {
       console.error("Preview error:", error);
@@ -203,6 +204,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
       console.log("Local video assigned:", {
         hasAudio: localStream.getAudioTracks().length > 0,
         hasVideo: localStream.getVideoTracks().length > 0,
@@ -605,6 +607,7 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
     }
     
     // Set up speaking detection for remote participant

@@ -17,6 +17,7 @@ interface LiveStream {
   description: string | null;
   status: string;
   started_at: string | null;
+  created_by?: string | null;
   external_stream_url: string | null;
 }
 
@@ -35,6 +36,7 @@ interface PastStream {
   recording_url: string | null;
   description: string | null;
   view_count?: number;
+  created_by?: string | null;
 }
 
 const Live = () => {
@@ -46,6 +48,7 @@ const Live = () => {
   const [upcomingStreams, setUpcomingStreams] = useState<ScheduledStream[]>([]);
   const [pastStreams, setPastStreams] = useState<PastStream[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profiles, setProfiles] = useState<Record<string, { full_name: string }>>({});
 
   useEffect(() => {
     fetchStreams();
@@ -69,7 +72,7 @@ const Live = () => {
     const [liveRes, scheduledRes, pastRes] = await Promise.all([
       supabase
         .from("live_streams")
-        .select("id, title, description, status, started_at, external_stream_url")
+        .select("id, title, description, status, started_at, external_stream_url, created_by")
         .eq("status", "live")
         .order("started_at", { ascending: false }),
       supabase
@@ -79,7 +82,7 @@ const Live = () => {
         .order("scheduled_at", { ascending: true }),
       supabase
         .from("live_streams")
-        .select("id, title, ended_at, started_at, recording_url, description")
+        .select("id, title, ended_at, started_at, recording_url, description, created_by")
         .eq("status", "ended")
         .eq("recording_status", "saved")
         .order("ended_at", { ascending: false })
@@ -92,9 +95,39 @@ const Live = () => {
       if (liveRes.data.length > 0 && !selectedStream) {
         setSelectedStream(liveRes.data[0]);
       }
+      const creatorIds = Array.from(new Set(liveRes.data.map(s => s.created_by).filter(Boolean))) as string[];
+      if (creatorIds.length > 0) {
+        const { data: liveProfiles } = await supabase
+          .from("profiles")
+          .select("user_id, full_name")
+          .in("user_id", creatorIds);
+        if (liveProfiles) {
+          setProfiles(prev => {
+            const next = { ...prev };
+            liveProfiles.forEach(p => { next[p.user_id] = { full_name: p.full_name }; });
+            return next;
+          });
+        }
+      }
     }
     if (scheduledRes.data) setUpcomingStreams(scheduledRes.data);
     if (pastRes.data) setPastStreams(pastRes.data);
+    if (pastRes.data) {
+      const pastCreatorIds = Array.from(new Set(pastRes.data.map(s => s.created_by).filter(Boolean))) as string[];
+      if (pastCreatorIds.length > 0) {
+        const { data: pastProfiles } = await supabase
+          .from("profiles")
+          .select("user_id, full_name")
+          .in("user_id", pastCreatorIds);
+        if (pastProfiles) {
+          setProfiles(prev => {
+            const next = { ...prev };
+            pastProfiles.forEach(p => { next[p.user_id] = { full_name: p.full_name }; });
+            return next;
+          });
+        }
+      }
+    }
     setLoading(false);
   };
 
@@ -143,6 +176,7 @@ const Live = () => {
                   title={selectedStream.title}
                   description={selectedStream.description || undefined}
                   viewerCount={0}
+                  channelName={selectedStream.created_by ? (profiles[selectedStream.created_by]?.full_name || "Channel") : "Channel"}
                 />
               ) : loading ? (
                 <Skeleton className="aspect-video w-full rounded-xl" />
@@ -153,6 +187,7 @@ const Live = () => {
                   isLive={true}
                   title={liveStreams[0].title}
                   description={liveStreams[0].description || undefined}
+                  channelName={liveStreams[0].created_by ? (profiles[liveStreams[0].created_by]?.full_name || "Channel") : "Channel"}
                 />
               ) : (
                 <Card className="aspect-video bg-gradient-to-br from-gray-900 to-black rounded-xl overflow-hidden">
@@ -209,14 +244,16 @@ const Live = () => {
                                 LIVE
                               </Badge>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-sm line-clamp-2 mb-1">{stream.title}</h4>
-                              <p className="text-xs text-muted-foreground">Home of Super Stars</p>
-                              {stream.started_at && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Started {formatDistanceToNow(new Date(stream.started_at), { addSuffix: true })}
-                                </p>
-                              )}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm line-clamp-2 mb-1">{stream.title}</h4>
+                            <p className="text-xs text-muted-foreground">
+                              {stream.created_by ? (profiles[stream.created_by]?.full_name || "Channel") : "Channel"}
+                            </p>
+                            {stream.started_at && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Started {formatDistanceToNow(new Date(stream.started_at), { addSuffix: true })}
+                              </p>
+                            )}
                             </div>
                           </div>
                         </CardContent>
@@ -324,7 +361,9 @@ const Live = () => {
                       <h4 className="font-medium text-sm line-clamp-2 mb-1 group-hover:text-accent transition-colors">
                         {stream.title}
                       </h4>
-                      <p className="text-xs text-muted-foreground">Home of Super Stars</p>
+                      <p className="text-xs text-muted-foreground">
+                        {stream.created_by ? (profiles[stream.created_by]?.full_name || "Channel") : "Channel"}
+                      </p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                         {stream.ended_at && (
                           <span>{formatDistanceToNow(new Date(stream.ended_at), { addSuffix: true })}</span>
