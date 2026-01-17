@@ -363,7 +363,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
         <div className={`flex-1 p-2 md:p-4 overflow-y-auto transition-all ${(showChat || showParticipants) ? 'hidden md:block md:mr-80' : ''}`}>
           <div className={`grid gap-2 md:gap-3 h-full auto-rows-fr ${getGridClass(totalParticipants)}`}>
             {/* Local Video */}
-            <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] ${isSpeaking && !isMuted ? 'ring-4 ring-green-500 ring-opacity-75' : ''}`}>
+            <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] ${isSpeaking && !isMuted ? 'speaking-ring' : ''}`}>
               {/* Always render video element, control visibility with CSS */}
               <video
                 ref={localVideoRef}
@@ -386,8 +386,14 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
               
               {/* Speaking indicator */}
               {isSpeaking && !isMuted && (
-                <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-full bg-green-500 text-white text-xs">
-                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                <div className="speaking-indicator">
+                  <div className="sound-wave">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
                   <span className="hidden sm:inline">Speaking</span>
                 </div>
               )}
@@ -644,7 +650,7 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
   const hasVideo = stream && stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
 
   return (
-    <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] ${isSpeaking && !participant.is_muted ? 'ring-4 ring-green-500 ring-opacity-75' : ''}`}>
+    <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] ${isSpeaking && !participant.is_muted ? 'speaking-ring' : ''}`}>
       {hasVideo ? (
         <video
           ref={videoRef}
@@ -665,8 +671,14 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
       
       {/* Speaking indicator */}
       {isSpeaking && !participant.is_muted && (
-        <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-full bg-green-500 text-white text-xs">
-          <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+        <div className="speaking-indicator">
+          <div className="sound-wave">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
           <span className="hidden sm:inline">Speaking</span>
         </div>
       )}
