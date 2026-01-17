@@ -56,57 +56,56 @@ export function useLiveStream() {
   const handleViewerSignal = useCallback(async (payload: any) => {
     const { type, from, signal } = payload.payload;
     if (!localStreamRef.current) return;
-    try {
-      console.log(`Broadcaster received ${type} signal from viewer ${from}`);
-      let pc = peerConnectionsRef.current.get(from);
-      if (type === "viewer-join") {
-        // New viewer wants to connect
-        pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 });
-        peerConnectionsRef.current.set(from, pc);
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            channelRef.current?.send({
-              type: "broadcast",
-              event: "stream-signal",
-              payload: { type: "ice-candidate", from: user?.id, to: from, signal: event.candidate }
-            });
-          }
-        };
-        pc.onconnectionstatechange = () => {
-          console.log(`Broadcaster connection state with ${from}: ${pc?.connectionState}`);
-          if (pc?.connectionState === "failed" || pc?.connectionState === "disconnected") {
-            console.error(`Connection to viewer ${from} failed/disconnected.`);
-            peerConnectionsRef.current.delete(from);
-            pc?.close();
-            updateViewerCount();
-          }
-        };
-        // Add local stream tracks
-        localStreamRef.current.getTracks().forEach(track => {
-          try {
-            pc!.addTrack(track, localStreamRef.current!);
-          } catch (err) {
-            console.error(`Error adding track to viewer ${from}:`, err);
-          }
-        });
-        // Create and send offer
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        channelRef.current?.send({
-          type: "broadcast",
-          event: "stream-signal",
-          payload: { type: "offer", from: user?.id, to: from, signal: offer }
-        });
-        updateViewerCount();
-      } else if (type === "answer" && pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(signal));
-      } else if (type === "ice-candidate" && pc) {
-        if (pc.remoteDescription) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal));
+    
+    console.log(`Broadcaster received ${type} signal from viewer ${from}`);
+    
+    let pc = peerConnectionsRef.current.get(from);
+    
+    if (type === "viewer-join") {
+      // New viewer wants to connect
+      pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 });
+      peerConnectionsRef.current.set(from, pc);
+      
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          channelRef.current?.send({
+            type: "broadcast",
+            event: "stream-signal",
+            payload: { type: "ice-candidate", from: user?.id, to: from, signal: event.candidate }
+          });
         }
+      };
+      
+      pc.onconnectionstatechange = () => {
+        console.log(`Broadcaster connection state with ${from}: ${pc?.connectionState}`);
+        if (pc?.connectionState === "disconnected" || pc?.connectionState === "failed") {
+          peerConnectionsRef.current.delete(from);
+          pc?.close();
+          updateViewerCount();
+        }
+      };
+      
+      // Add local stream tracks
+      localStreamRef.current.getTracks().forEach(track => {
+        pc!.addTrack(track, localStreamRef.current!);
+      });
+      
+      // Create and send offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "stream-signal",
+        payload: { type: "offer", from: user?.id, to: from, signal: offer }
+      });
+      
+      updateViewerCount();
+    } else if (type === "answer" && pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(signal));
+    } else if (type === "ice-candidate" && pc) {
+      if (pc.remoteDescription) {
+        await pc.addIceCandidate(new RTCIceCandidate(signal));
       }
-    } catch (err) {
-      console.error(`Error handling viewer signal (${type}) from ${from}:`, err);
     }
   }, [user]);
 
