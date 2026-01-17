@@ -345,6 +345,7 @@ export function useStreamViewer(streamId: string | null) {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const viewerId = useRef<string>(generateId());
   const pendingViewerCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const viewerRecordKeyRef = useRef<{ stream_id: string; user_id: string | null; anon_id: string | null } | null>(null);
 
   const handleBroadcasterSignal = useCallback(async (payload: any) => {
     const { type, from, to, signal } = payload.payload;
@@ -432,6 +433,18 @@ export function useStreamViewer(streamId: string | null) {
             event: "viewer-signal",
             payload: { type: "viewer-join", from: viewerId.current }
           });
+          // Track viewer presence in DB
+          viewerRecordKeyRef.current = { stream_id: streamId, user_id: user?.id || null, anon_id: user?.id ? null : viewerId.current };
+          supabase
+            .from("live_viewers")
+            .upsert({
+              stream_id: streamId,
+              user_id: user?.id || null,
+              anon_id: user?.id ? null : viewerId.current,
+              joined_at: new Date().toISOString(),
+              left_at: null,
+            }, { onConflict: "stream_id,user_id,anon_id" })
+            .then(() => {});
         }
       });
   }, [streamId, isConnecting, isConnected, handleBroadcasterSignal]);
@@ -450,6 +463,21 @@ export function useStreamViewer(streamId: string | null) {
     setRemoteStream(null);
     setIsConnected(false);
     setIsConnecting(false);
+    
+    // Mark viewer left
+    const key = viewerRecordKeyRef.current;
+    if (key) {
+      supabase
+        .from("live_viewers")
+        .upsert({
+          stream_id: key.stream_id,
+          user_id: key.user_id,
+          anon_id: key.anon_id,
+          left_at: new Date().toISOString(),
+        }, { onConflict: "stream_id,user_id,anon_id" })
+        .then(() => {});
+      viewerRecordKeyRef.current = null;
+    }
   }, []);
 
   // Cleanup on unmount

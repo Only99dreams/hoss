@@ -29,8 +29,10 @@ import { FeedbackManagement } from "@/components/admin/FeedbackManagement";
 
 interface Stats {
   totalUsers: number;
-  liveViewers: number;
+  liveStreams: number;
   prayerSessions: number;
+  peopleInPrayer: number;
+  peopleInLive: number;
   donations: number;
 }
 
@@ -40,8 +42,10 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
-    liveViewers: 0,
+    liveStreams: 0,
     prayerSessions: 0,
+    peopleInPrayer: 0,
+    peopleInLive: 0,
     donations: 0,
   });
 
@@ -66,11 +70,35 @@ const AdminDashboard = () => {
     ]);
 
     const totalDonations = donations.data?.reduce((sum, d) => sum + Number(d.amount), 0) || 0;
+    
+    // Count active prayer participants
+    const { count: prayerPeopleCount } = await supabase
+      .from("prayer_participants")
+      .select("*", { count: "exact", head: true })
+      .is("left_at", null);
+    
+    // Count live viewers for current live streams
+    let livePeopleCount = 0;
+    const { data: liveStreamIds } = await supabase
+      .from("live_streams")
+      .select("id")
+      .eq("status", "live");
+    if (liveStreamIds && liveStreamIds.length > 0) {
+      const ids = liveStreamIds.map(s => s.id);
+      const { count: viewersCount } = await supabase
+        .from("live_viewers")
+        .select("*", { count: "exact", head: true })
+        .in("stream_id", ids)
+        .is("left_at", null);
+      livePeopleCount = viewersCount || 0;
+    }
 
     setStats({
       totalUsers: users.count || 0,
-      liveViewers: streams.count || 0,
+      liveStreams: streams.count || 0,
       prayerSessions: prayers.count || 0,
+      peopleInPrayer: prayerPeopleCount || 0,
+      peopleInLive: livePeopleCount || 0,
       donations: totalDonations,
     });
   };
@@ -94,8 +122,10 @@ const AdminDashboard = () => {
 
   const statCards = [
     { title: "Total Users", value: stats.totalUsers.toLocaleString(), change: "+12%", icon: Users },
-    { title: "Live Streams", value: stats.liveViewers.toLocaleString(), change: "Active", icon: Radio },
+    { title: "Live Streams", value: stats.liveStreams.toLocaleString(), change: "Active", icon: Radio },
+    { title: "People in Live", value: stats.peopleInLive.toLocaleString(), change: "Watching", icon: Radio },
     { title: "Prayer Sessions", value: stats.prayerSessions.toLocaleString(), change: "Active", icon: Heart },
+    { title: "People in Prayer", value: stats.peopleInPrayer.toLocaleString(), change: "Joined", icon: Users },
     { title: "Donations", value: `$${stats.donations.toLocaleString()}`, change: "+8%", icon: Gift },
   ];
 
