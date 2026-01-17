@@ -69,7 +69,9 @@ export function usePrayerRoom(sessionId: string | null) {
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
 
-  const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
+    const [myProfile, setMyProfile] = useState<{ full_name: string; avatar_url: string | null } | null>(null);
+    const [profileError, setProfileError] = useState<string | null>(null);
+    const [profileLoading, setProfileLoading] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Fetch my profile

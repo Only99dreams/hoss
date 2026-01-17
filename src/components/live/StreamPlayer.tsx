@@ -82,13 +82,24 @@ export function StreamPlayer({
   const { remoteStream, isConnected, isConnecting, connect } = useStreamViewer(
     (streamId && !externalUrl) ? streamId : null
   );
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [connectTimeout, setConnectTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Auto-connect when streamId is available and it's a WebRTC stream
   useEffect(() => {
     if (streamId && !externalUrl && isLive) {
+      setConnectError(null);
       connect();
+      if (connectTimeout) clearTimeout(connectTimeout);
+      const timeout = setTimeout(() => {
+        if (!isConnected) {
+          setConnectError("Failed to connect to the livestream. Please check your network or try again later.");
+        }
+      }, 15000);
+      setConnectTimeout(timeout);
+      return () => clearTimeout(timeout);
     }
-  }, [streamId, externalUrl, isLive, connect]);
+  }, [streamId, externalUrl, isLive, connect, isConnected]);
 
   // Use remote stream from WebRTC or passed stream
   const activeStream = remoteStream || stream;
@@ -296,6 +307,14 @@ export function StreamPlayer({
                 <Loader2 className="w-16 h-16 mx-auto mb-4 animate-spin text-accent" />
                 <p className="text-xl font-medium">Connecting to stream...</p>
                 <p className="text-sm text-gray-400 mt-1">Please wait while we establish the connection</p>
+                {connectError && (
+                  <div className="mt-4">
+                    <p className="text-red-400 font-semibold">{connectError}</p>
+                    <Button className="mt-2" onClick={() => { setConnectError(null); connect(); }}>
+                      Retry
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
