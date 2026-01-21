@@ -170,7 +170,7 @@ export function usePrayerRoom(sessionId: string | null) {
           
           // When a new participant joins, we wait for their "ready" signal instead of connecting immediately on INSERT
           // This prevents connection attempts before they are fully set up
-          if (payload.eventType === "INSERT" && isConnected && localStream) {
+          if (payload.eventType === "INSERT" && isConnectedRef.current && localStreamRef.current) {
             console.log("New participant inserted:", payload.new.user_id);
           }
         }
@@ -189,9 +189,9 @@ export function usePrayerRoom(sessionId: string | null) {
       .on("broadcast", { event: "participant-ready" }, async (payload: any) => {
         // When a new participant announces they are ready, connect to them
         const { userId } = payload.payload;
-        if (userId !== user?.id && isConnected && localStream) {
+        if (userId !== userRef.current?.id && isConnectedRef.current && localStreamRef.current) {
           console.log("Participant ready, initiating connection:", userId);
-          initiateConnection(userId, localStream);
+          initiateConnection(userId, localStreamRef.current);
         }
       })
       .subscribe();
@@ -393,8 +393,8 @@ export function usePrayerRoom(sessionId: string | null) {
         .upsert({
           session_id: sessionId,
           user_id: user.id,
-          can_speak: false,
-          can_video: false,
+          can_speak: true, // Default to true for now unless there's a specific moderation feature
+          can_video: withVideo,
           is_muted: !withAudio,
           left_at: null, // Clear left_at so they're active again
         }, {

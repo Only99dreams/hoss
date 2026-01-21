@@ -650,19 +650,20 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
     };
   }, [stream]);
 
-  // Check if video track exists and is enabled
-  const hasVideo = stream && stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
+  // Check if video should be shown based on database state
+  const shouldShowVideo = participant.can_video && stream && stream.getVideoTracks().length > 0;
 
   return (
     <div className={`relative rounded-xl overflow-hidden bg-[#3c4043] w-full h-full min-h-[150px] ${isSpeaking && !participant.is_muted ? 'speaking-ring' : ''}`}>
-      {hasVideo ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          className="w-full h-full object-cover object-center"
-        />
-      ) : (
+      {/* Always render video element for audio playback, hide if video is off */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        className={`w-full h-full object-cover object-center ${shouldShowVideo ? 'block' : 'hidden'}`}
+      />
+      
+      {!shouldShowVideo && (
         <div className="w-full h-full flex items-center justify-center bg-[#3c4043]">
           <Avatar className="w-16 h-16 md:w-24 md:h-24">
             <AvatarImage src={participant.profile?.avatar_url} />
