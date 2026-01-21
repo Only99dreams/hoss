@@ -167,16 +167,10 @@ export function usePrayerRoom(sessionId: string | null) {
           console.log("Participant change:", payload);
           await fetchParticipants();
           
-          // When a new participant joins, establish connection with them
+          // When a new participant joins, we wait for their "ready" signal instead of connecting immediately on INSERT
+          // This prevents connection attempts before they are fully set up
           if (payload.eventType === "INSERT" && isConnected && localStream) {
-            const newParticipant = payload.new;
-            if (newParticipant.user_id !== user?.id && !newParticipant.left_at) {
-              console.log("New participant joined, initiating connection:", newParticipant.user_id);
-              // Small delay to let them set up their stream
-              setTimeout(() => {
-                initiateConnection(newParticipant.user_id, localStream);
-              }, 1000);
-            }
+            console.log("New participant inserted:", payload.new.user_id);
           }
         }
       )
