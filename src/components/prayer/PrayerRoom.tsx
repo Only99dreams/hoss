@@ -246,11 +246,12 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
 
   // Calculate grid layout based on participant count
   const getGridClass = (count: number) => {
-    if (count === 1) return 'grid-cols-1';
-    if (count === 2) return 'grid-cols-1 md:grid-cols-2';
-    if (count <= 4) return 'grid-cols-2';
-    if (count <= 6) return 'grid-cols-2 md:grid-cols-3';
-    return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+    // Mobile view is preserved (default classes). Desktop (md+) classes added for better sizing.
+    if (count === 1) return 'grid-cols-1 md:max-w-3xl';
+    if (count === 2) return 'grid-cols-1 md:grid-cols-2 md:max-w-5xl';
+    if (count <= 4) return 'grid-cols-2 md:max-w-5xl';
+    if (count <= 6) return 'grid-cols-2 md:grid-cols-3 md:max-w-6xl';
+    return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 md:max-w-7xl';
   };
 
   // Preview screen before joining
@@ -362,10 +363,10 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Video Grid */}
-        <div className={`flex-1 p-2 md:p-6 overflow-y-auto transition-all ${(showChat || showParticipants) ? 'hidden md:block md:mr-80' : ''}`}>
-          <div className={`grid gap-2 md:gap-4 lg:gap-5 h-full auto-rows-fr ${getGridClass(totalParticipants)}`}>
+        <div className={`flex-1 p-2 md:p-6 overflow-y-auto transition-all flex flex-col items-center justify-center ${(showChat || showParticipants) ? 'hidden md:block md:mr-80' : ''}`}>
+          <div className={`grid gap-2 md:gap-4 lg:gap-5 w-full h-full md:h-auto auto-rows-fr md:auto-rows-auto mx-auto ${getGridClass(totalParticipants)}`}>
             {/* Local Video */}
-            <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:min-h-[220px] md:aspect-square ${isSpeaking && !isMuted ? 'speaking-ring' : ''}`}>
+            <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:min-h-[220px] md:aspect-video ${isSpeaking && !isMuted ? 'speaking-ring' : ''}`}>
               {/* Always render video element, control visibility with CSS */}
               <video
                 ref={localVideoRef}

@@ -24,7 +24,7 @@ export function CTASection() {
             </h2>
 
             <p className="text-lg text-accent-foreground/80 mb-8 max-w-2xl mx-auto">
-              Be part of a global family united in faith. Register today to access all features, join prayer sessions, and connect with believers worldwide.
+              Be part of The Miracle City Church's global family united in faith. Register today to access all features, join prayer sessions, and connect with believers worldwide.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

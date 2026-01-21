@@ -65,7 +65,7 @@ export function HeroSection() {
           </h1>
 
           <p className="text-lg md:text-xl text-primary-foreground/80 mb-10 max-w-2xl mx-auto leading-relaxed animate-slide-up" style={{ animationDelay: "0.1s" }}>
-            Join our vibrant community for live services, powerful prayer sessions, and spiritual growth. Connect with believers from around the world.
+            The official digital platform of <strong className="text-primary-foreground">The Miracle City Church</strong>. Join our vibrant community for live services, powerful prayer sessions, and spiritual growth.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center animate-slide-up" style={{ animationDelay: "0.2s" }}>

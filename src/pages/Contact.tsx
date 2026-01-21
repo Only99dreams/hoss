@@ -141,7 +141,7 @@ const Contact = () => {
                           type="tel"
                           value={formData.phone}
                           onChange={handleInputChange}
-                          placeholder="+1 (555) 000-0000"
+                          placeholder="08037836991"
                           className="mt-1"
                         />
                       </div>
@@ -195,16 +195,17 @@ const Contact = () => {
                       </div>
                       <div>
                         <span className="font-medium block">Address</span>
-                        <span className="text-sm text-muted-foreground">123 Faith Street, City, Country</span>
+                        <span className="text-sm text-muted-foreground">The Miracle City Church<br/>By City Complex Asaba, Delta State</span>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3">
+
+                    <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
                         <Phone className="w-5 h-5 text-accent" />
                       </div>
                       <div>
                         <span className="font-medium block">Phone</span>
-                        <span className="text-sm text-muted-foreground">+1 (555) 123-4567</span>
+                        <span className="text-sm text-muted-foreground">08037836991, 09073338222</span>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
@@ -213,7 +214,7 @@ const Contact = () => {
                       </div>
                       <div>
                         <span className="font-medium block">Email</span>
-                        <span className="text-sm text-muted-foreground">contact@church.com</span>
+                        <span className="text-sm text-muted-foreground">contact@homeofsuperstars.com</span>
                       </div>
                     </div>
                   </div>

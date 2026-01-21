@@ -26,10 +26,13 @@ export function Footer() {
           <div className="lg:col-span-1">
             <div className="flex items-center gap-3 mb-4">
               <img src={logo} alt="Home of Super Stars" className="w-12 h-12 rounded-full object-cover" />
-              <span className="font-serif text-xl font-semibold">Home of Super Stars</span>
+              <div>
+                <span className="font-serif text-xl font-semibold block">Home of Super Stars</span>
+                <span className="text-xs text-primary-foreground/70">The Miracle City Church</span>
+              </div>
             </div>
             <p className="text-primary-foreground/70 text-sm leading-relaxed mb-4">
-              Join our community of faith. Experience live services, prayer sessions, and spiritual growth together.
+              Join our community of faith at The Miracle City Church. Experience live services, prayer sessions, and spiritual growth together.
             </p>
             <div className="flex items-center gap-2 text-sm text-primary-foreground/70">
               <Heart className="w-4 h-4 text-accent" />
@@ -78,13 +81,13 @@ export function Footer() {
               <li className="flex items-start gap-3">
                 <MapPin className="w-4 h-4 text-accent mt-0.5 shrink-0" />
                 <span className="text-sm text-primary-foreground/70">
-                  123 Faith Street, City, Country
+                  By City Complex Asaba, Delta State
                 </span>
               </li>
               <li className="flex items-center gap-3">
                 <Phone className="w-4 h-4 text-accent shrink-0" />
                 <span className="text-sm text-primary-foreground/70">
-                  +1 (555) 123-4567
+                  08037836991, 09073338222
                 </span>
               </li>
               <li className="flex items-center gap-3">
