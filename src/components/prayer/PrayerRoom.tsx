@@ -27,6 +27,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
     isVideoOn,
     handRaised,
     myProfile,
+    myParticipation,
     joinSession,
     leaveSession,
     toggleMute,

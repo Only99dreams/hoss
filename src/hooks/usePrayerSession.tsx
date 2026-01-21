@@ -441,14 +441,9 @@ export function usePrayerRoom(sessionId: string | null) {
       setMyParticipation(data);
       setIsConnected(true);
 
-      // Connect to other participants - pass stream directly since state hasn't updated yet
-      participants.forEach((p) => {
-        if (p.user_id !== user.id && !p.left_at) {
-          console.log("Initiating connection to existing participant:", p.user_id);
-          initiateConnection(p.user_id, stream);
-        }
-      });
-
+      // We don't initiate connections proactively to existing participants to avoid glare (double connections).
+      // Instead, we broadcast "participant-ready" and let existing participants initiate connections to us.
+      
       // Announce that we're ready so other participants can connect to us
       setTimeout(() => {
         channelRef.current?.send({
