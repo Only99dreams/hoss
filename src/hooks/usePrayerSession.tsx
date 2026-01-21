@@ -143,8 +143,8 @@ export function usePrayerRoom(sessionId: string | null) {
     await fetchParticipants();
   };
 
-  const fetchParticipants = async () => {
-    if (!sessionId) return;
+  const fetchParticipants = async (): Promise<ParticipantWithProfile[]> => {
+    if (!sessionId) return [];
 
     const { data } = await supabase
       .from("prayer_participants")
@@ -171,7 +171,11 @@ export function usePrayerRoom(sessionId: string | null) {
         const myPart = data.find((p) => p.user_id === user.id);
         setMyParticipation(myPart || null);
       }
+
+      return participantsWithProfiles;
     }
+
+    return [];
   };
 
   const subscribeToParticipants = () => {
@@ -436,6 +440,7 @@ export function usePrayerRoom(sessionId: string | null) {
       });
 
       setLocalStream(stream);
+      localStreamRef.current = stream;
       setIsMuted(!withAudio);
       setIsVideoOn(withVideo);
 
@@ -459,6 +464,7 @@ export function usePrayerRoom(sessionId: string | null) {
 
       setMyParticipation(data);
       setIsConnected(true);
+      isConnectedRef.current = true;
 
       // We don't initiate connections proactively to existing participants to avoid glare (double connections).
       // Instead, we broadcast "participant-ready" and let existing participants initiate connections to us.
@@ -472,19 +478,18 @@ export function usePrayerRoom(sessionId: string | null) {
           event: "participant-ready",
           payload: { userId: user.id },
         });
-        
-        // Also initiate connections to existing participants after a short delay
+
         setTimeout(() => {
           if (isConnectedRef.current && localStreamRef.current) {
-            // Fetch current participants to ensure we have the latest list
-            fetchParticipants().then(() => {
-              participants.forEach((participant) => {
+            void (async () => {
+              const currentParticipants = await fetchParticipants();
+              currentParticipants.forEach((participant) => {
                 if (participant.user_id !== user.id && !peerConnections.current.has(participant.user_id)) {
                   console.log("Initiating connection to existing participant:", participant.user_id);
                   initiateConnection(participant.user_id, localStreamRef.current);
                 }
               });
-            });
+            })();
           }
         }, 1500);
       }, 1000);

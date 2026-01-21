@@ -602,6 +602,7 @@ interface ParticipantVideoProps {
 
 function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -610,6 +611,10 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
       videoRef.current.play().catch(() => {});
+    }
+    if (audioRef.current && stream) {
+      audioRef.current.srcObject = stream;
+      audioRef.current.play().catch(() => {});
     }
     
     // Set up speaking detection for remote participant
@@ -656,7 +661,7 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
 
   return (
     <div className={`relative rounded-xl overflow-hidden bg-[#3c4043] w-full h-full min-h-[150px] ${isSpeaking && !participant.is_muted ? 'speaking-ring' : ''}`}>
-      {/* Always render video element for audio playback, hide if video is off */}
+      <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
       <video
         ref={videoRef}
         autoPlay
