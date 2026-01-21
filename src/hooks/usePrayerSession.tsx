@@ -235,10 +235,14 @@ export function usePrayerRoom(sessionId: string | null) {
         
         // Process queued ICE candidates
         const queue = iceCandidatesQueue.current.get(from);
-        if (queue) {
+        if (queue && queue.length > 0) {
           console.log(`Processing ${queue.length} queued ICE candidates from ${from}`);
           for (const candidate of queue) {
-            await pc.addIceCandidate(candidate);
+            try {
+              await pc.addIceCandidate(candidate);
+            } catch (error) {
+              console.error("Failed to add queued ICE candidate:", error);
+            }
           }
           iceCandidatesQueue.current.delete(from);
         }
@@ -312,23 +316,38 @@ export function usePrayerRoom(sessionId: string | null) {
 
     pc.ontrack = (event) => {
       console.log("Received remote track from", peerId, event.track.kind, "enabled:", event.track.enabled);
-      const remoteStream = event.streams[0];
-      if (remoteStream) {
+      
+      // Handle multiple streams and track updates
+      event.streams.forEach((remoteStream) => {
         setRemoteStreams((prev) => {
           const newMap = new Map(prev);
           newMap.set(peerId, remoteStream);
           return newMap;
         });
-      }
+      });
+      
+      // Listen for track state changes
+      event.track.onmute = () => {
+        console.log(`Track ${event.track.kind} from ${peerId} muted`);
+      };
+      event.track.onunmute = () => {
+        console.log(`Track ${event.track.kind} from ${peerId} unmuted`);
+      };
     };
 
     // Use provided stream or fall back to localStream state
     const activeStream = stream || localStreamRef.current;
     if (activeStream) {
       activeStream.getTracks().forEach((track) => {
-        console.log(`Adding ${track.kind} track to peer connection for ${peerId}`);
-        pc.addTrack(track, activeStream);
+        console.log(`Adding ${track.kind} track to peer connection for ${peerId}, enabled: ${track.enabled}`);
+        try {
+          pc.addTrack(track, activeStream);
+        } catch (error) {
+          console.error(`Failed to add ${track.kind} track to peer connection:`, error);
+        }
       });
+    } else {
+      console.warn("No active stream available for peer connection");
     }
 
     peerConnections.current.set(peerId, pc);
@@ -445,13 +464,30 @@ export function usePrayerRoom(sessionId: string | null) {
       // Instead, we broadcast "participant-ready" and let existing participants initiate connections to us.
       
       // Announce that we're ready so other participants can connect to us
+      // Give a bit more time for the stream to be fully initialized
       setTimeout(() => {
+        console.log("Broadcasting participant-ready signal");
         channelRef.current?.send({
           type: "broadcast",
           event: "participant-ready",
           payload: { userId: user.id },
         });
-      }, 500);
+        
+        // Also initiate connections to existing participants after a short delay
+        setTimeout(() => {
+          if (isConnectedRef.current && localStreamRef.current) {
+            // Fetch current participants to ensure we have the latest list
+            fetchParticipants().then(() => {
+              participants.forEach((participant) => {
+                if (participant.user_id !== user.id && !peerConnections.current.has(participant.user_id)) {
+                  console.log("Initiating connection to existing participant:", participant.user_id);
+                  initiateConnection(participant.user_id, localStreamRef.current);
+                }
+              });
+            });
+          }
+        }, 1500);
+      }, 1000);
 
       toast({ title: "Joined", description: "You've joined the prayer session" });
     } catch (error: any) {
