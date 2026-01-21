@@ -362,12 +362,12 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex overflow-hidden relative min-h-0">
         {/* Video Grid */}
-        <div className={`flex-1 p-2 md:p-4 overflow-y-auto transition-all flex flex-col items-center justify-center ${(showChat || showParticipants) ? 'hidden md:flex md:mr-80' : ''}`}>
-          <div className={`grid gap-2 md:gap-3 w-full h-full content-center auto-rows-fr ${getGridClass(totalParticipants)}`}>
+        <div className={`flex-1 p-2 md:p-4 overflow-y-auto transition-all min-h-0 ${(showChat || showParticipants) ? 'hidden md:flex md:mr-80' : ''}`}>
+          <div className={`grid gap-2 md:gap-3 w-full h-full auto-rows-fr place-items-stretch ${getGridClass(totalParticipants)}`}>
             {/* Local Video */}
-            <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:min-h-[220px] md:aspect-video ${isSpeaking && !isMuted ? 'speaking-ring' : ''}`}>
+            <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:min-h-[220px] h-full ${isSpeaking && !isMuted ? 'speaking-ring' : ''}`}>
               {/* Always render video element, control visibility with CSS */}
               <video
                 ref={localVideoRef}
@@ -379,7 +379,7 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
               />
               {/* Show avatar when video is off */}
               {(!isVideoOn || !localStream) && (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900 aspect-video md:aspect-auto">
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
                   <Avatar className="w-16 h-16 md:w-24 md:h-24">
                     <AvatarFallback className="bg-accent/30 text-accent text-xl md:text-3xl">
                       {myProfile?.full_name?.[0]?.toUpperCase() || "U"}
