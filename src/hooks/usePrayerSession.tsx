@@ -70,6 +70,7 @@ export function usePrayerRoom(sessionId: string | null) {
   const [handRaised, setHandRaised] = useState(false);
 
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const iceCandidatesQueue = useRef<Map<string, RTCIceCandidate[]>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Fetch my profile

@@ -363,8 +363,8 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Video Grid */}
-        <div className={`flex-1 p-2 md:p-6 overflow-y-auto transition-all flex flex-col items-center justify-center ${(showChat || showParticipants) ? 'hidden md:block md:mr-80' : ''}`}>
-          <div className={`grid gap-2 md:gap-4 lg:gap-5 w-full h-full md:h-auto auto-rows-fr md:auto-rows-auto mx-auto ${getGridClass(totalParticipants)}`}>
+        <div className={`flex-1 p-2 md:p-4 overflow-y-auto transition-all flex flex-col items-center justify-center ${(showChat || showParticipants) ? 'hidden md:flex md:mr-80' : ''}`}>
+          <div className={`grid gap-2 md:gap-3 w-full h-full content-center auto-rows-fr ${getGridClass(totalParticipants)}`}>
             {/* Local Video */}
             <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:min-h-[220px] md:aspect-video ${isSpeaking && !isMuted ? 'speaking-ring' : ''}`}>
               {/* Always render video element, control visibility with CSS */}
@@ -654,7 +654,7 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
   const hasVideo = stream && stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
 
   return (
-    <div className={`relative rounded-xl overflow-hidden bg-gray-900 min-h-[120px] md:min-h-[220px] md:aspect-square ${isSpeaking && !participant.is_muted ? 'speaking-ring' : ''}`}>
+    <div className={`relative rounded-xl overflow-hidden bg-[#3c4043] w-full h-full min-h-[150px] ${isSpeaking && !participant.is_muted ? 'speaking-ring' : ''}`}>
       {hasVideo ? (
         <video
           ref={videoRef}
@@ -663,7 +663,7 @@ function ParticipantVideo({ participant, stream }: ParticipantVideoProps) {
           className="w-full h-full object-cover object-center"
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900 aspect-video md:aspect-auto">
+        <div className="w-full h-full flex items-center justify-center bg-[#3c4043]">
           <Avatar className="w-16 h-16 md:w-24 md:h-24">
             <AvatarImage src={participant.profile?.avatar_url} />
             <AvatarFallback className="bg-accent/30 text-accent text-xl md:text-3xl">
