@@ -72,6 +72,24 @@ export function usePrayerRoom(sessionId: string | null) {
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const iceCandidatesQueue = useRef<Map<string, RTCIceCandidate[]>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  
+  // Refs to avoid stale closures in event listeners
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const isConnectedRef = useRef(false);
+  const userRef = useRef(user);
+
+  // Sync refs with state
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
+
+  useEffect(() => {
+    isConnectedRef.current = isConnected;
+  }, [isConnected]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   // Fetch my profile
   useEffect(() => {
@@ -211,9 +229,20 @@ export function usePrayerRoom(sessionId: string | null) {
       if (type === "offer") {
         // Create new connection if we don't have one
         if (!pc) {
-          pc = createPeerConnection(from, localStream);
+          pc = createPeerConnection(from, localStreamRef.current);
         }
         await pc.setRemoteDescription(new RTCSessionDescription(signal));
+        
+        // Process queued ICE candidates
+        const queue = iceCandidatesQueue.current.get(from);
+        if (queue) {
+          console.log(`Processing ${queue.length} queued ICE candidates from ${from}`);
+          for (const candidate of queue) {
+            await pc.addIceCandidate(candidate);
+          }
+          iceCandidatesQueue.current.delete(from);
+        }
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         broadcastSignal("answer", from, answer);
@@ -224,11 +253,15 @@ export function usePrayerRoom(sessionId: string | null) {
           console.log(`Set remote answer from ${from}`);
         }
       } else if (type === "ice-candidate") {
+        const candidate = new RTCIceCandidate(signal);
         if (pc && pc.remoteDescription) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal));
+          await pc.addIceCandidate(candidate);
           console.log(`Added ICE candidate from ${from}`);
         } else {
           console.log(`Queuing ICE candidate from ${from} - no remote description yet`);
+          const queue = iceCandidatesQueue.current.get(from) || [];
+          queue.push(candidate);
+          iceCandidatesQueue.current.set(from, queue);
         }
       }
     } catch (error) {
