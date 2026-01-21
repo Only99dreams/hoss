@@ -290,7 +290,7 @@ export function usePrayerRoom(sessionId: string | null) {
     };
 
     // Use provided stream or fall back to localStream state
-    const activeStream = stream || localStream;
+    const activeStream = stream || localStreamRef.current;
     if (activeStream) {
       activeStream.getTracks().forEach((track) => {
         console.log(`Adding ${track.kind} track to peer connection for ${peerId}`);
@@ -306,7 +306,7 @@ export function usePrayerRoom(sessionId: string | null) {
     channelRef.current?.send({
       type: "broadcast",
       event: "webrtc-signal",
-      payload: { type, from: user?.id, to, signal },
+      payload: { type, from: userRef.current?.id, to, signal },
     });
   };
 
