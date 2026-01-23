@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Menu, Radio, Heart, BookOpen, MessageCircle, Gift, User, LogOut, LayoutDashboard, Settings, Play } from "lucide-react";
+import { Menu, Radio, Heart, BookOpen, MessageCircle, Gift, User, LogOut, LayoutDashboard, Settings, Play, Download } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationCenter } from "@/components/ui/notification";
 import logo from "@/assets/logo.jpg";
@@ -30,6 +30,25 @@ export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAdmin, signOut } = useAuth();
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   const isActive = (href: string) => location.pathname === href;
 
@@ -72,6 +91,12 @@ export function Header() {
         </nav>
 
         <div className="hidden md:flex items-center gap-2">
+          {deferredPrompt && (
+            <Button variant="outline" size="sm" onClick={handleInstall}>
+              <Download className="mr-2 h-4 w-4" />
+              Install App
+            </Button>
+          )}
           {user && <NotificationCenter />}
           {user ? (
             <DropdownMenu>

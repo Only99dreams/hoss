@@ -7,9 +7,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { 
   Mic, MicOff, Video, VideoOff, Hand, PhoneOff, Users, 
-  MessageSquare, Send, MoreVertical, X
+  MessageSquare, Send, MoreVertical, X, Check, UserPlus, Ban
 } from "lucide-react";
 import { usePrayerRoom } from "@/hooks/usePrayerSession";
+import { useAuth } from "@/hooks/useAuth";
 
 interface PrayerRoomProps {
   sessionId: string;
@@ -17,6 +18,7 @@ interface PrayerRoomProps {
 }
 
 export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
+  const { isAdmin } = useAuth();
   const {
     session,
     participants,
@@ -33,6 +35,10 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
     toggleMute,
     toggleVideo,
     raiseHand,
+    pendingParticipants,
+    isPendingApproval,
+    approveParticipant,
+    rejectParticipant,
   } = usePrayerRoom(sessionId);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -322,6 +328,44 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
     );
   }
 
+  if (isPendingApproval) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-4 text-center animate-in fade-in">
+        <div className="bg-card p-8 rounded-2xl shadow-xl max-w-md w-full border">
+          <div className="mx-auto w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-6">
+            <Users className="w-8 h-8 text-yellow-600" />
+          </div>
+          <h3 className="text-2xl font-bold mb-2">Waiting for Approval</h3>
+          <p className="text-muted-foreground mb-8">
+            The host has been notified of your request to join. You will be admitted automatically once approved.
+          </p>
+          
+          <div className="relative w-full aspect-video bg-muted rounded-xl overflow-hidden mb-6">
+            <video 
+              ref={localVideoRef} 
+              autoPlay 
+              muted 
+              playsInline 
+              className="w-full h-full object-cover" 
+              style={{transform: 'scaleX(-1)'}} 
+            />
+            {!isVideoOn && (
+               <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+                  <Avatar className="w-16 h-16">
+                    <AvatarFallback>{myProfile?.full_name?.[0] || "U"}</AvatarFallback>
+                  </Avatar>
+               </div>
+            )}
+          </div>
+          
+          <Button variant="outline" onClick={onLeave} className="w-full">
+            Cancel Request
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!isConnected) {
     return null;
   }
@@ -329,7 +373,53 @@ export function PrayerRoom({ sessionId, onLeave }: PrayerRoomProps) {
   const totalParticipants = participants.length + 1;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] md:h-[calc(100vh-10rem)] bg-background">
+    <div className="flex flex-col h-[calc(100vh-8rem)] md:h-[calc(100vh-10rem)] bg-background relative">
+      {/* Admin Join Requests Popup */}
+      {isAdmin && pendingParticipants.length > 0 && (
+        <div className="fixed top-24 right-4 z-50 w-80 bg-card border rounded-xl shadow-2xl p-4 animate-in slide-in-from-right-10 duration-300">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-semibold flex items-center gap-2 text-sm">
+              <UserPlus className="w-4 h-4 text-blue-500" />
+              Join Requests ({pendingParticipants.length})
+            </h4>
+          </div>
+          <div className="space-y-3 max-h-[300px] overflow-y-auto">
+            {pendingParticipants.map((p) => (
+              <div key={p.id} className="flex items-center justify-between bg-muted/50 p-2 rounded-lg">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src={p.profile?.avatar_url || undefined} />
+                    <AvatarFallback className="text-xs">{p.profile?.full_name?.[0] || "?"}</AvatarFallback>
+                  </Avatar>
+                  <div className="truncate">
+                    <p className="text-xs font-medium truncate max-w-[100px]">{p.profile?.full_name || "Unknown"}</p>
+                    <p className="text-[10px] text-muted-foreground">Requesting to join</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-100"
+                    onClick={() => approveParticipant(p.id)}
+                  >
+                    <Check className="w-4 h-4" />
+                  </Button>
+                  <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-100"
+                    onClick={() => rejectParticipant(p.id)}
+                  >
+                    <Ban className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Header - Mobile optimized */}
       <div className="flex items-center justify-between px-3 py-2 md:px-4 md:py-3 border-b bg-card">
         <div className="flex items-center gap-2 min-w-0">
