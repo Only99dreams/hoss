@@ -256,11 +256,9 @@ export type Database = {
           can_video: boolean | null
           hand_raised: boolean | null
           id: string
-          is_muted: boolean
-          role: string
+          is_muted: boolean | null
           joined_at: string
           left_at: string | null
-          role: string
           session_id: string
           user_id: string
         }
@@ -269,11 +267,9 @@ export type Database = {
           can_video?: boolean | null
           hand_raised?: boolean | null
           id?: string
-          is_muted?: boolean
-          role?: string
+          is_muted?: boolean | null
           joined_at?: string
           left_at?: string | null
-          role?: string
           session_id: string
           user_id: string
         }
@@ -282,11 +278,9 @@ export type Database = {
           can_video?: boolean | null
           hand_raised?: boolean | null
           id?: string
-          is_muted?: boolean
-          role?: string
+          is_muted?: boolean | null
           joined_at?: string
           left_at?: string | null
-          role?: string
           session_id?: string
           user_id?: string
         }

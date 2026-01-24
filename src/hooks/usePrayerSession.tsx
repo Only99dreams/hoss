@@ -62,8 +62,6 @@ export function usePrayerRoom(sessionId: string | null) {
   const [session, setSession] = useState<PrayerSession | null>(null);
   const [myParticipation, setMyParticipation] = useState<PrayerParticipant | null>(null);
   const [myProfile, setMyProfile] = useState<{ full_name: string; avatar_url: string | null } | null>(null);
-  const [pendingParticipants, setPendingParticipants] = useState<ParticipantWithProfile[]>([]);
-  const [isPendingApproval, setIsPendingApproval] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -167,37 +165,14 @@ export function usePrayerRoom(sessionId: string | null) {
         profile: profiles?.find((pr) => pr.user_id === p.user_id),
       }));
 
-      const approved = participantsWithProfiles.filter(p => p.role === 'participant');
-      const pending = participantsWithProfiles.filter(p => p.role === 'pending');
-
-      setParticipants(approved);
-      setPendingParticipants(pending);
+      setParticipants(participantsWithProfiles);
 
       if (user) {
         const myPart = data.find((p) => p.user_id === user.id);
         setMyParticipation(myPart || null);
-        
-        // Update isPendingApproval state if my role changed
-        if (myPart && myPart.role === 'participant' && isPendingApproval) {
-          setIsPendingApproval(false);
-          // If we were pending and now approved, we need to complete the connection process
-          if (!isConnectedRef.current && localStreamRef.current) {
-             setIsConnected(true);
-             isConnectedRef.current = true;
-             // Announce ready
-              setTimeout(() => {
-                console.log("Broadcasting participant-ready signal after approval");
-                channelRef.current?.send({
-                  type: "broadcast",
-                  event: "participant-ready",
-                  payload: { userId: user.id },
-                });
-              }, 1000);
-          }
-        }
       }
 
-      return approved;
+      return participantsWithProfiles;
     }
 
     return [];
@@ -469,10 +444,6 @@ export function usePrayerRoom(sessionId: string | null) {
       setIsMuted(!withAudio);
       setIsVideoOn(withVideo);
 
-      // Check if user is admin
-      const { data: isAdmin } = await supabase.rpc('has_role', { _role: 'admin', _user_id: user.id });
-      const initialRole = isAdmin ? 'participant' : 'pending';
-
       // Join in database (upsert to handle rejoining)
       const { data, error } = await supabase
         .from("prayer_participants")
@@ -482,7 +453,6 @@ export function usePrayerRoom(sessionId: string | null) {
           can_speak: true, // Default to true for now unless there's a specific moderation feature
           can_video: withVideo,
           is_muted: !withAudio,
-          role: initialRole,
           left_at: null, // Clear left_at so they're active again
         }, {
           onConflict: "session_id,user_id"
@@ -491,12 +461,6 @@ export function usePrayerRoom(sessionId: string | null) {
         .single();
 
       if (error) throw error;
-
-      if (initialRole === 'pending') {
-        setIsPendingApproval(true);
-        // Don't connect yet
-        return;
-      }
 
       setMyParticipation(data);
       setIsConnected(true);
@@ -655,39 +619,6 @@ export function usePrayerRoom(sessionId: string | null) {
     });
   };
 
-  const approveParticipant = async (participantId: string) => {
-    try {
-      const { error } = await supabase
-        .from("prayer_participants")
-        .update({ role: 'participant' })
-        .eq("id", participantId);
-
-      if (error) throw error;
-      
-      toast({ title: "Approved", description: "Participant has been approved to join." });
-      // The subscription will update the lists
-    } catch (error) {
-      console.error("Error approving participant:", error);
-      toast({ title: "Error", description: "Failed to approve participant", variant: "destructive" });
-    }
-  };
-
-  const rejectParticipant = async (participantId: string) => {
-    try {
-      const { error } = await supabase
-        .from("prayer_participants")
-        .update({ role: 'rejected', left_at: new Date().toISOString() }) // Mark as rejected and effectively removed
-        .eq("id", participantId);
-
-      if (error) throw error;
-      
-      toast({ title: "Rejected", description: "Participant has been rejected." });
-    } catch (error) {
-      console.error("Error rejecting participant:", error);
-      toast({ title: "Error", description: "Failed to reject participant", variant: "destructive" });
-    }
-  };
-
   return {
     session,
     participants,
@@ -704,9 +635,5 @@ export function usePrayerRoom(sessionId: string | null) {
     toggleMute,
     toggleVideo,
     raiseHand,
-    pendingParticipants,
-    isPendingApproval,
-    approveParticipant,
-    rejectParticipant,
   };
 }
